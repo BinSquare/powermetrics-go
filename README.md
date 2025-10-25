@@ -22,7 +22,7 @@ This library provides a Go interface for parsing the output from macOS's `powerm
 ## Installation
 
 ```bash
-go get github.com/binsquare/benchtop/powermetrics-go
+go get github.com/BinSquare/powermetrics-go
 ```
 
 ## Usage
@@ -37,7 +37,7 @@ import (
     "fmt"
     "log"
     
-    "github.com/binsquare/benchtop/powermetrics-go"
+    "github.com/BinSquare/powermetrics-go"
 )
 
 func main() {

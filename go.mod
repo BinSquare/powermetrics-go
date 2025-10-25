@@ -1,3 +1,3 @@
-module github.com/binsquare/benchtop/powermetrics-go
+module github.com/BinSquare/powermetrics-go
 
 go 1.24

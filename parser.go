@@ -6,7 +6,7 @@ import (
 	"io"
 	"os/exec"
 
-	"github.com/binsquare/benchtop/powermetrics-go/internal"
+	"github.com/BinSquare/powermetrics-go/internal"
 )
 
 // Parser handles invoking powermetrics and parsing its output.
