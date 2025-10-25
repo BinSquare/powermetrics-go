@@ -105,6 +105,51 @@ This is a system-level requirement of powermetrics, not this library.
 - `RunWithConfig(ctx, config)`: Run with custom configuration
 - `NewParser(config)`: Create a new parser with configuration
 
+## Command Line Interface
+
+A command-line interface is included for easy debugging and direct usage.
+
+### Building the CLI
+
+```bash
+# Build the CLI tool from the cli directory
+cd cli
+go build -o powermetrics-cli
+
+# Run with sudo (required for powermetrics)
+sudo ./powermetrics-cli
+```
+
+### CLI Options
+
+```bash
+sudo ./powermetrics-cli -help
+```
+
+Available options:
+- `-interval`: Sampling interval (default 1s, e.g., 500ms, 1s, 2s)
+- `-json`: Output metrics in JSON format
+- `-system`: Only show system metrics
+- `-process`: Only show process metrics  
+- `-debug`: Show debug information
+- `-help`: Show help message
+
+### CLI Examples
+
+```bash
+# Default output every second
+sudo ./powermetrics-cli
+
+# JSON output every 500ms
+sudo ./powermetrics-cli -interval 500ms -json
+
+# Only system metrics in JSON
+sudo ./powermetrics-cli -system -json
+
+# Show debug information
+sudo ./powermetrics-cli -debug
+```
+
 ## License
 
 Apache 2.0 license.
