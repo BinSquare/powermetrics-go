@@ -10,6 +10,7 @@ type SystemSample struct {
 	GPUTemperatureC    float64
 	CPUTemperatureC    float64
 	ANEBusyPercent     float64
+	ANEPowerWatts      float64
 	DRAMPowerWatts     float64
 }
 

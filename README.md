@@ -1,6 +1,7 @@
 # powermetrics-go
 
-A Go library for parsing macOS powermetrics output to monitor system performance metrics including CPU/GPU power, frequency, temperature, and process activity.
+A Go library for parsing macOS powermetrics output to monitor system performance metrics including CPU/GPU power, frequency, temperature*, and process activity.
+* Note: Temperature values may be 0 on Apple Silicon Macs (M1/M2/M3) as these systems report thermal pressure levels rather than direct temperature values in powermetrics output
 
 ## Overview
 
@@ -8,9 +9,12 @@ This library provides a Go interface for parsing the output from macOS's `powerm
 
 ## Features
 
-- Parse system-wide metrics (CPU/GPU power, frequency, temperature)
+- Parse system-wide metrics (CPU/GPU power, frequency, temperature*) 
+  *Note: Temperature values may be 0 on Apple Silicon Macs (M1/M2/M3) as these systems report thermal pressure levels rather than direct temperature values in powermetrics output
 - Parse per-process GPU activity
 - Parse CPU cluster information
+- Support for ANE (Apple Neural Engine) power and busy metrics
+- Support for both watts (W) and milliwatts (mW) power values (with automatic conversion)
 - Configurable sampling intervals
 - Structured data output for programmatic consumption
 
@@ -98,6 +102,17 @@ This is a system-level requirement of powermetrics, not this library.
 - `Metrics`: Represents a single powermetrics sample
 - `ClusterInfo`: CPU cluster information
 - `Parser`: Handles invoking powermetrics and parsing output
+- `SystemSample`: Contains system metrics including CPU/GPU/ANE power, frequencies, temperatures, and busy percentages
+  - `CPUPowerWatts`: CPU power consumption in watts
+  - `GPUPowerWatts`: GPU power consumption in watts  
+  - `ANEPowerWatts`: Apple Neural Engine power consumption in watts
+  - `CPUFrequencyMHz`: CPU frequency in MHz
+  - `GPUFrequencyMHz`: GPU frequency in MHz
+  - `CPUTemperatureC`: CPU temperature in Celsius (may be 0 on Apple Silicon Macs)
+  - `GPUTemperatureC`: GPU temperature in Celsius (may be 0 on Apple Silicon Macs)
+  - `ANEBusyPercent`: ANE utilization percentage
+  - `GPUBusyPercent`: GPU utilization percentage
+  - `DRAMPowerWatts`: DRAM power consumption in watts
 
 ### Functions
 
@@ -148,7 +163,18 @@ sudo ./powermetrics-cli -system -json
 
 # Show debug information
 sudo ./powermetrics-cli -debug
+
+# Output example (Apple Silicon Macs may show N/A for temperature values):
+# CPU Power: 1.23 W, GPU Power: 0.45 W, ANE Power: 0.12 W, CPU Freq: 2447 MHz, GPU Freq: 338 MHz, CPU Temp: N/A, GPU Temp: N/A, ANE Busy: 0.00%
 ```
+
+## Apple Silicon Compatibility
+
+This library is fully compatible with Apple Silicon Macs (M1/M2/M3). Note the following differences in behavior:
+
+- Temperature values may be 0 as Apple Silicon Macs report thermal pressure levels rather than direct temperature values
+- Power values are often reported in milliwatts (mW) and are automatically converted to watts (W) 
+- ANE (Apple Neural Engine) metrics are supported and reported
 
 ## License
 

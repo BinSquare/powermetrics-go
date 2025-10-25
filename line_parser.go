@@ -79,8 +79,13 @@ func (p *Parser) parseSystemMetrics(line, lower string) *Metrics {
 	updated := false
 
 	if hasAll(lower, "cpu", "power") && hasNone(lower, "gpu") {
+		// Try to parse watts first
 		if val, ok := parseTrailingValue(line, "w"); ok {
 			p.system.CPUPowerWatts = val
+			updated = true
+		} else if val, ok := parseTrailingValue(line, "mW"); ok {
+			// If watts not found, try milliwatts and convert to watts
+			p.system.CPUPowerWatts = val / 1000.0
 			updated = true
 		}
 	}
@@ -121,10 +126,27 @@ func (p *Parser) parseSystemMetrics(line, lower string) *Metrics {
 			updated = true
 		}
 	}
+	
+	if hasAll(lower, "ane", "power") {
+		// Try to parse watts first
+		if val, ok := parseTrailingValue(line, "w"); ok {
+			p.system.ANEPowerWatts = val
+			updated = true
+		} else if val, ok := parseTrailingValue(line, "mW"); ok {
+			// If watts not found, try milliwatts and convert to watts
+			p.system.ANEPowerWatts = val / 1000.0
+			updated = true
+		}
+	}
 
 	if hasAll(lower, "gpu", "power") {
+		// Try to parse watts first
 		if val, ok := parseTrailingValue(line, "w"); ok {
 			p.system.GPUPowerWatts = val
+			updated = true
+		} else if val, ok := parseTrailingValue(line, "mW"); ok {
+			// If watts not found, try milliwatts and convert to watts
+			p.system.GPUPowerWatts = val / 1000.0
 			updated = true
 		}
 	}
@@ -154,6 +176,75 @@ func (p *Parser) parseSystemMetrics(line, lower string) *Metrics {
 	if hasAll(lower, "cpu", "temperature") {
 		if val, ok := parseTrailingValue(line, "c"); ok {
 			p.system.CPUTemperatureC = val
+			updated = true
+		}
+	}
+	
+	// Additional temperature patterns for different Mac systems
+	if hasAll(lower, "gpu", "die", "temp") || hasAll(lower, "gpu", "junction", "temp") {
+		if val, ok := parseTrailingValue(line, "c"); ok {
+			p.system.GPUTemperatureC = val
+			updated = true
+		}
+	}
+	
+	if hasAll(lower, "cpu", "die", "temp") || hasAll(lower, "cpu", "junction", "temp") || hasAll(lower, "package", "temp") {
+		if val, ok := parseTrailingValue(line, "c"); ok {
+			p.system.CPUTemperatureC = val
+			updated = true
+		}
+	}
+	
+	// Look for temperature values that might not have explicit CPU/GPU labels
+	if hasAll(lower, "temperature") && (hasAny(lower, "die", "junction", "package") || strings.Contains(lower, "sensor")) {
+		if val, ok := parseTrailingValue(line, "c"); ok {
+			// If we already have a CPU temp, assign to GPU, otherwise CPU
+			if p.system.CPUTemperatureC == 0 {
+				p.system.CPUTemperatureC = val
+			} else if p.system.GPUTemperatureC == 0 {
+				p.system.GPUTemperatureC = val
+			}
+			updated = true
+		}
+	}
+
+	// Additional temperature patterns that may appear in different Mac systems
+	if hasAll(lower, "junction", "temperature") && hasAny(lower, "cpu", "gpu") {
+		if val, ok := parseTrailingValue(line, "c"); ok {
+			if hasAny(lower, "cpu", "package") {
+				p.system.CPUTemperatureC = val
+			} else if hasAny(lower, "gpu") {
+				p.system.GPUTemperatureC = val
+			}
+			updated = true
+		}
+	}
+
+	// Check for "die temperature" patterns
+	if hasAll(lower, "die", "temperature") {
+		if val, ok := parseTrailingValue(line, "c"); ok {
+			if hasAny(lower, "cpu", "package") {
+				p.system.CPUTemperatureC = val
+			} else if hasAny(lower, "gpu") {
+				p.system.GPUTemperatureC = val
+			}
+			updated = true
+		}
+	}
+
+	// Check for temperature values that have "T" prefix
+	if strings.Contains(lower, "temperature") && strings.Contains(lower, "c") {
+		if val, ok := parseTrailingValue(line, "c"); ok {
+			// If we can't determine CPU vs GPU, set both but prefer based on content
+			if hasAny(lower, "cpu", "package", "processor") {
+				p.system.CPUTemperatureC = val
+			} else if hasAny(lower, "gpu", "graphics") {
+				p.system.GPUTemperatureC = val
+			} else {
+				// Set both if uncertain
+				p.system.CPUTemperatureC = val
+				p.system.GPUTemperatureC = val
+			}
 			updated = true
 		}
 	}
@@ -268,6 +359,15 @@ func hasNone(str string, tokens ...string) bool {
 		}
 	}
 	return true
+}
+
+func hasAny(str string, tokens ...string) bool {
+	for _, token := range tokens {
+		if strings.Contains(str, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func convertToNanoseconds(value float64, unit string) uint64 {

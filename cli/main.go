@@ -43,10 +43,10 @@ func main() {
 		fmt.Printf("Debug: Process only: %t\n", *onlyProcess)
 	}
 
-	// Create config with custom interval
+	// Create config with custom interval - using more reliable sampler configuration
 	config := powermetrics.Config{
 		SampleWindow:     *interval,
-		PowermetricsArgs: []string{"--samplers", "cpu_power,gpu_power,thermal", "-i", fmt.Sprintf("%d", interval.Milliseconds())},
+		PowermetricsArgs: []string{"--samplers", "cpu_power,gpu_power,thermal", "--show-process-gpu", "-i", fmt.Sprintf("%d", interval.Milliseconds())},
 	}
 
 	// Set up signal handling for graceful shutdown
@@ -81,25 +81,31 @@ func main() {
 			fmt.Println("Debug: Received metrics")
 		}
 
-		if *onlyProcess && len(metrics.GPUProcessSamples) > 0 {
-			if *jsonOutput {
-				data, _ := json.Marshal(metrics.GPUProcessSamples)
-				fmt.Println(string(data))
-			} else {
-				fmt.Printf("GPU Processes: %d\n", len(metrics.GPUProcessSamples))
-				for _, proc := range metrics.GPUProcessSamples {
-					fmt.Printf("  PID: %d, Name: %s, Busy: %.2f%%, Active: %d ns\n", 
-						proc.PID, proc.Name, proc.BusyPercent, proc.ActiveNanos)
+		if *onlyProcess {
+			if len(metrics.GPUProcessSamples) > 0 {
+				if *jsonOutput {
+					data, _ := json.Marshal(metrics.GPUProcessSamples)
+					fmt.Println(string(data))
+				} else {
+					fmt.Printf("GPU Processes: %d\n", len(metrics.GPUProcessSamples))
+					for _, proc := range metrics.GPUProcessSamples {
+						fmt.Printf("  PID: %d, Name: %s, Busy: %.2f%%, Active: %d ns\n", 
+							proc.PID, proc.Name, proc.BusyPercent, proc.ActiveNanos)
+					}
 				}
+			} else if *debug {
+				fmt.Println("Debug: No GPU process samples available in this metrics update")
 			}
 		} else if *onlySystem && metrics.SystemSample != nil {
 			if *jsonOutput {
 				data, _ := json.Marshal(metrics.SystemSample)
 				fmt.Println(string(data))
 			} else {
-				fmt.Printf("CPU Power: %.2f W, GPU Power: %.2f W, CPU Temp: %.2f°C, GPU Temp: %.2f°C\n",
-					metrics.SystemSample.CPUPowerWatts, metrics.SystemSample.GPUPowerWatts,
-					metrics.SystemSample.CPUTemperatureC, metrics.SystemSample.GPUTemperatureC)
+				fmt.Printf("CPU Power: %.2f W, GPU Power: %.2f W, ANE Power: %.2f W, CPU Freq: %.0f MHz, GPU Freq: %.0f MHz, CPU Temp: %.2f°C, GPU Temp: %.2f°C, ANE Busy: %.2f%%\n",
+					metrics.SystemSample.CPUPowerWatts, metrics.SystemSample.GPUPowerWatts, metrics.SystemSample.ANEPowerWatts,
+					metrics.SystemSample.CPUFrequencyMHz, metrics.SystemSample.GPUFrequencyMHz,
+					metrics.SystemSample.CPUTemperatureC, metrics.SystemSample.GPUTemperatureC,
+					metrics.SystemSample.ANEBusyPercent)
 			}
 		} else if !*onlyProcess && !*onlySystem {
 			// Show all metrics
