@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/binsquare/benchtop/internal"
+	"github.com/binsquare/benchtop/powermetrics-go/internal"
 )
 
 var (

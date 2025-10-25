@@ -94,7 +94,6 @@ This is a system-level requirement of powermetrics, not this library.
 ## API
 
 ### Types
-
 - `Config`: Configuration for the powermetrics collector
 - `Metrics`: Represents a single powermetrics sample
 - `ClusterInfo`: CPU cluster information
@@ -108,4 +107,4 @@ This is a system-level requirement of powermetrics, not this library.
 
 ## License
 
-This project is part of the benchtop-cli project. See the main project repository for licensing information.
+Apache 2.0 license.

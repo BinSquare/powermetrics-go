@@ -1,6 +1,6 @@
 package powermetrics
 
-import "github.com/binsquare/benchtop/internal"
+import "github.com/binsquare/benchtop/powermetrics-go/internal"
 
 // Metrics represents a single powermetrics sample.
 type Metrics struct {
