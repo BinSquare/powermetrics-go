@@ -8,6 +8,12 @@ type Metrics struct {
 	GPUProcessSamples []internal.GPUProcessSample
 	Errors            []string
 	Clusters          []ClusterInfo
+	CPUResidencies    []internal.CPUResidencyMetrics
+	ClusterResidencies []internal.ClusterResidencyMetrics
+	GPUResidency      *internal.GPUResidencyMetrics
+	Network           *internal.NetworkMetrics
+	Disk              *internal.DiskMetrics
+	Interrupts        []internal.InterruptMetrics
 }
 
 // ClusterInfo captures summary information about a CPU cluster.

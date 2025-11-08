@@ -15,6 +15,12 @@ type Parser struct {
 	system       internal.SystemSample
 	frequencyMHz float64
 	clusterInfo  map[string]*ClusterInfo
+	cpuResidencies map[int]*internal.CPUResidencyMetrics
+	clusterResidencies map[string]*internal.ClusterResidencyMetrics
+	networkInfo  *internal.NetworkMetrics
+	diskInfo     *internal.DiskMetrics
+	interruptInfo map[int]*internal.InterruptMetrics
+	gpuResidency *internal.GPUResidencyMetrics
 }
 
 // NewParser creates a parser using the provided configuration, filling in defaults as required.
@@ -24,6 +30,14 @@ func NewParser(cfg Config) *Parser {
 	return &Parser{
 		config:      normalized,
 		clusterInfo: make(map[string]*ClusterInfo),
+		cpuResidencies: make(map[int]*internal.CPUResidencyMetrics),
+		clusterResidencies: make(map[string]*internal.ClusterResidencyMetrics),
+		interruptInfo: make(map[int]*internal.InterruptMetrics),
+		gpuResidency: &internal.GPUResidencyMetrics{
+			HWActiveFreqResidency: make(map[float64]float64),
+			SWRequestedStates: make(internal.GPUSoftwareStateData),
+			SWStates: make(internal.GPUSoftwareStateData),
+		},
 	}
 }
 

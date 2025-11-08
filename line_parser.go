@@ -15,6 +15,24 @@ var (
 	numberExtractor    = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)`)
 	clusterOnlineRegex = regexp.MustCompile(`([A-Z0-9-]+)-Cluster Online: ([\d.]+)%`)
 	clusterHWFreqRegex = regexp.MustCompile(`([A-Z0-9-]+)-Cluster HW active frequency: ([\d.]+) MHz`)
+	cpuFreqResidencyRegex = regexp.MustCompile(`(\d+) MHz: +([\d.]+)%`)
+	clusterFreqResidencyRegex = regexp.MustCompile(`(\d+) MHz: +([\d.]+)%`)
+	clusterHWActiveResidencyRegex = regexp.MustCompile(`HW active residency: +([\d.]+)%`)
+	cpuActiveResidencyRegex = regexp.MustCompile(`active residency: +([\d.]+)%`)
+	cpuIdleResidencyRegex = regexp.MustCompile(`idle residency: +([\d.]+)%`)
+	cpuDownResidencyRegex = regexp.MustCompile(`down residency: +([\d.]+)%`)
+	batteryRegex = regexp.MustCompile(`Battery: percent_charge: ([\d.]+)`)
+	networkRegex = regexp.MustCompile(`out: ([\d.]+) packets/s, ([\d.]+) bytes/s`)
+	networkInRegex = regexp.MustCompile(`in: +([\d.]+) packets/s, ([\d.]+) bytes/s`)
+	diskReadRegex = regexp.MustCompile(`read: ([\d.]+) ops/s ([\d.]+) KBytes/s`)
+	diskWriteRegex = regexp.MustCompile(`write: ([\d.]+) ops/s ([\d.]+) KBytes/s`)
+	interruptRegex = regexp.MustCompile(`CPU (\d+):`)
+	interruptTotalRegex = regexp.MustCompile(`Total IRQ: ([\d.]+) interrupts/sec`)
+	interruptIPITimerRegex = regexp.MustCompile(`\|-> (IPI|TIMER): ([\d.]+) interrupts/sec`)
+	gpuFreqRegex = regexp.MustCompile(`GPU HW active frequency: ([\d.]+) MHz`)
+	gpuHwActiveResidencyRegex = regexp.MustCompile(`GPU HW active residency: +([\d.]+)%`)
+	gpuIdleResidencyRegex = regexp.MustCompile(`GPU idle residency: +([\d.]+)%`)
+	gpuSWStateRegex = regexp.MustCompile(`GPU SW (?:requested state|state): \(([^)]+)\)`)
 )
 
 // ParseLine parses a single line of powermetrics output and returns the derived metrics.
@@ -26,7 +44,34 @@ func (p *Parser) ParseLine(line string) (*Metrics, error) {
 
 	line = trimmed
 
+	// Handle sections
+	if strings.Contains(line, "**** Processor usage ****") {
+		// This indicates we're starting the processor usage section
+		return nil, nil
+	} else if strings.Contains(line, "**** Network activity ****") {
+		// This indicates we're starting the network activity section
+		return nil, nil
+	} else if strings.Contains(line, "**** Disk activity ****") {
+		// This indicates we're starting the disk activity section
+		return nil, nil
+	} else if strings.Contains(line, "****  Interrupt distribution ****") {
+		// This indicates we're starting the interrupt distribution section
+		return nil, nil
+	} else if strings.Contains(line, "**** GPU usage ****") {
+		// This indicates we're starting the GPU usage section
+		return nil, nil
+	} else if strings.Contains(line, "**** Battery and backlight usage ****") {
+		// This indicates we're starting the battery section
+		return nil, nil
+	}
+
 	p.updateClusterInfo(line)
+	p.updateCPUInfo(line)
+	p.updateNetworkInfo(line)
+	p.updateDiskInfo(line)
+	p.updateInterruptInfo(line)
+	p.updateGPUResidencyInfo(line)
+	p.updateBatteryInfo(line)
 
 	if metrics, err := p.parseGPUProcessLine(line); err != nil {
 		return nil, err
@@ -249,6 +294,7 @@ func (p *Parser) parseSystemMetrics(line, lower string) *Metrics {
 		}
 	}
 
+	// Only return metrics if this specific line contributed to system metrics data
 	if !updated {
 		return nil
 	}
@@ -259,6 +305,43 @@ func (p *Parser) parseSystemMetrics(line, lower string) *Metrics {
 
 	if clusters := p.clusterSnapshot(); len(clusters) > 0 {
 		metrics.Clusters = clusters
+	}
+
+	// Add new metrics
+	if len(p.cpuResidencies) > 0 {
+		cpuResidencies := make([]internal.CPUResidencyMetrics, 0, len(p.cpuResidencies))
+		for _, cpu := range p.cpuResidencies {
+			cpuResidencies = append(cpuResidencies, *cpu)
+		}
+		metrics.CPUResidencies = cpuResidencies
+	}
+
+	if len(p.clusterResidencies) > 0 {
+		clusterResidencies := make([]internal.ClusterResidencyMetrics, 0, len(p.clusterResidencies))
+		for _, cluster := range p.clusterResidencies {
+			clusterResidencies = append(clusterResidencies, *cluster)
+		}
+		metrics.ClusterResidencies = clusterResidencies
+	}
+
+	if p.gpuResidency != nil && (p.gpuResidency.HWActiveResidency > 0 || p.gpuResidency.IdleResidency > 0 || len(p.gpuResidency.HWActiveFreqResidency) > 0) {
+		metrics.GPUResidency = p.gpuResidency
+	}
+
+	if p.networkInfo != nil {
+		metrics.Network = p.networkInfo
+	}
+
+	if p.diskInfo != nil {
+		metrics.Disk = p.diskInfo
+	}
+
+	if len(p.interruptInfo) > 0 {
+		interrupts := make([]internal.InterruptMetrics, 0, len(p.interruptInfo))
+		for _, interrupt := range p.interruptInfo {
+			interrupts = append(interrupts, *interrupt)
+		}
+		metrics.Interrupts = interrupts
 	}
 
 	return metrics
@@ -316,6 +399,333 @@ func (p *Parser) clusterSnapshot() []ClusterInfo {
 	})
 
 	return clusters
+}
+
+func (p *Parser) updateCPUInfo(line string) {
+	// Check if the line is for a specific CPU
+	cpuMatch := interruptRegex.FindStringSubmatch(line)
+	if cpuMatch != nil {
+		cpuID, _ := strconv.Atoi(cpuMatch[1])
+		cpu := p.ensureCPUResidency(cpuID)
+		// Capture the main frequency for this CPU from the line like "CPU 0 frequency: 1338 MHz"
+		parts := strings.Split(line, " ")
+		for i, part := range parts {
+			if part == "frequency:" && i+1 < len(parts) {
+				freqStr := strings.TrimRight(parts[i+1], "MHz")
+				if freq, err := strconv.ParseFloat(freqStr, 64); err == nil {
+					cpu.Frequency = freq
+				}
+			}
+		}
+		return
+	}
+
+	// Check for line like "CPU 0 active residency:  55.11% (1020 MHz:  39% 1404 MHz: 2.2%...)"
+	cpuResidencyMatch := regexp.MustCompile(`CPU (\d+) active residency: +([\d.]+)%`).FindStringSubmatch(line)
+	if cpuResidencyMatch != nil {
+		cpuID, _ := strconv.Atoi(cpuResidencyMatch[1])
+		cpu := p.ensureCPUResidency(cpuID)
+		
+		// Parse the frequency residency data from the parentheses
+		openParenIdx := strings.Index(line, "(")
+		if openParenIdx != -1 {
+			freqDataStr := line[openParenIdx+1:]
+			freqDataStr = strings.TrimRight(freqDataStr, ")")
+			cpu.ActiveResidency = parseFreqResidency(freqDataStr)
+		}
+		return
+	}
+
+	// Check for idle residency
+	idleMatch := regexp.MustCompile(`CPU (\d+) idle residency: +([\d.]+)%`).FindStringSubmatch(line)
+	if idleMatch != nil {
+		cpuID, _ := strconv.Atoi(idleMatch[1])
+		idlePercent, _ := strconv.ParseFloat(idleMatch[2], 64)
+		cpu := p.ensureCPUResidency(cpuID)
+		cpu.IdleResidency = idlePercent
+		return
+	}
+
+	// Check for down residency
+	downMatch := regexp.MustCompile(`CPU (\d+) down residency: +([\d.]+)%`).FindStringSubmatch(line)
+	if downMatch != nil {
+		cpuID, _ := strconv.Atoi(downMatch[1])
+		downPercent, _ := strconv.ParseFloat(downMatch[2], 64)
+		cpu := p.ensureCPUResidency(cpuID)
+		cpu.DownResidency = downPercent
+		return
+	}
+
+	// Handle cluster residency information
+	if strings.Contains(line, "-Cluster HW active residency:") {
+		parts := strings.Split(line, ":")
+		if len(parts) >= 2 {
+			clusterName := strings.TrimSpace(strings.Split(line, " ")[0]) // Get the first part before the colon
+			// Parse the percentage after "residency:"
+			if val, ok := parseTrailingValue(line, "%"); ok {
+				cluster := p.ensureClusterResidency(clusterName)
+				cluster.HWActiveResidency = val
+			}
+			
+			// Parse the frequency residency data in parentheses
+			openParenIdx := strings.Index(line, "(")
+			if openParenIdx != -1 {
+				freqDataStr := line[openParenIdx+1:]
+				freqDataStr = strings.TrimRight(freqDataStr, ")")
+				cluster := p.ensureClusterResidency(clusterName)
+				cluster.HWActiveFreqResidency = parseFreqResidency(freqDataStr)
+			}
+		}
+		return
+	}
+}
+
+func (p *Parser) ensureCPUResidency(cpuID int) *internal.CPUResidencyMetrics {
+	if cpu, exists := p.cpuResidencies[cpuID]; exists {
+		return cpu
+	}
+
+	cpu := &internal.CPUResidencyMetrics{
+		CPUID: cpuID,
+		ActiveResidency: make(internal.CPUResidencyData),
+	}
+	p.cpuResidencies[cpuID] = cpu
+	return cpu
+}
+
+func (p *Parser) ensureClusterResidency(name string) *internal.ClusterResidencyMetrics {
+	if cluster, exists := p.clusterResidencies[name]; exists {
+		return cluster
+	}
+
+	cluster := &internal.ClusterResidencyMetrics{
+		Name: name,
+		HWActiveFreqResidency: make(map[float64]float64),
+	}
+	p.clusterResidencies[name] = cluster
+	return cluster
+}
+
+func (p *Parser) updateNetworkInfo(line string) {
+	// Parse outgoing network activity
+	outMatches := networkRegex.FindStringSubmatch(line)
+	if len(outMatches) >= 3 {
+		if outPackets, err := strconv.ParseFloat(outMatches[1], 64); err == nil {
+			if outBytes, err := strconv.ParseFloat(outMatches[2], 64); err == nil {
+				if p.networkInfo == nil {
+					p.networkInfo = &internal.NetworkMetrics{}
+				}
+				p.networkInfo.OutPacketsPerSec = outPackets
+				p.networkInfo.OutBytesPerSec = outBytes
+			}
+		}
+	}
+
+	// Parse incoming network activity
+	inMatches := networkInRegex.FindStringSubmatch(line)
+	if len(inMatches) >= 3 {
+		if inPackets, err := strconv.ParseFloat(inMatches[1], 64); err == nil {
+			if inBytes, err := strconv.ParseFloat(inMatches[2], 64); err == nil {
+				if p.networkInfo == nil {
+					p.networkInfo = &internal.NetworkMetrics{}
+				}
+				p.networkInfo.InPacketsPerSec = inPackets
+				p.networkInfo.InBytesPerSec = inBytes
+			}
+		}
+	}
+}
+
+func (p *Parser) updateDiskInfo(line string) {
+	// Parse read activity
+	readMatches := diskReadRegex.FindStringSubmatch(line)
+	if len(readMatches) >= 3 {
+		if readOps, err := strconv.ParseFloat(readMatches[1], 64); err == nil {
+			if readBytes, err := strconv.ParseFloat(readMatches[2], 64); err == nil {
+				if p.diskInfo == nil {
+					p.diskInfo = &internal.DiskMetrics{}
+				}
+				p.diskInfo.ReadOpsPerSec = readOps
+				p.diskInfo.ReadBytesPerSec = readBytes * 1024 // Convert from KBytes to Bytes
+			}
+		}
+	}
+
+	// Parse write activity
+	writeMatches := diskWriteRegex.FindStringSubmatch(line)
+	if len(writeMatches) >= 3 {
+		if writeOps, err := strconv.ParseFloat(writeMatches[1], 64); err == nil {
+			if writeBytes, err := strconv.ParseFloat(writeMatches[2], 64); err == nil {
+				if p.diskInfo == nil {
+					p.diskInfo = &internal.DiskMetrics{}
+				}
+				p.diskInfo.WriteOpsPerSec = writeOps
+				p.diskInfo.WriteBytesPerSec = writeBytes * 1024 // Convert from KBytes to Bytes
+			}
+		}
+	}
+}
+
+func (p *Parser) updateInterruptInfo(line string) {
+	// Check for CPU interrupt lines
+	cpuMatch := interruptRegex.FindStringSubmatch(line)
+	if cpuMatch != nil {
+		cpuID, _ := strconv.Atoi(cpuMatch[1])
+		p.ensureInterruptInfo(cpuID)
+		return
+	}
+
+	// Check for total interrupts line
+	totalMatch := interruptTotalRegex.FindStringSubmatch(line)
+	if totalMatch != nil {
+		// Find the most recently added interrupt that doesn't have this value set
+		for _, interrupt := range p.interruptInfo {
+			if interrupt.TotalIRQ == 0 { // If not yet set, assume this is for the most recently added CPU
+				totalIRQ, _ := strconv.ParseFloat(totalMatch[1], 64)
+				interrupt.TotalIRQ = totalIRQ
+				break
+			}
+		}
+		return
+	}
+
+	// Check for IPI and TIMER interrupt lines
+	ipiTimerMatch := interruptIPITimerRegex.FindStringSubmatch(line)
+	if ipiTimerMatch != nil {
+		interruptType := ipiTimerMatch[1]
+		value, _ := strconv.ParseFloat(ipiTimerMatch[2], 64)
+		
+		// Find the most recently added interrupt that doesn't have this value set
+		for _, interrupt := range p.interruptInfo {
+			if interruptType == "IPI" && interrupt.IPI == 0 {
+				interrupt.IPI = value
+				break
+			} else if interruptType == "TIMER" && interrupt.TIMER == 0 {
+				interrupt.TIMER = value
+				break
+			}
+		}
+	}
+}
+
+func (p *Parser) ensureInterruptInfo(cpuID int) *internal.InterruptMetrics {
+	if interrupt, exists := p.interruptInfo[cpuID]; exists {
+		return interrupt
+	}
+
+	interrupt := &internal.InterruptMetrics{
+		CPUID: cpuID,
+	}
+	p.interruptInfo[cpuID] = interrupt
+	return interrupt
+}
+
+func (p *Parser) updateGPUResidencyInfo(line string) {
+	// Parse GPU HW active frequency
+	if matches := gpuFreqRegex.FindStringSubmatch(line); matches != nil {
+		freq, _ := strconv.ParseFloat(matches[1], 64)
+		p.gpuResidency.PowerMilliwatts = freq // Temporary storage until we process the GPU power line
+		return
+	}
+
+	// Parse GPU HW active residency
+	if matches := gpuHwActiveResidencyRegex.FindStringSubmatch(line); matches != nil {
+		residency, _ := strconv.ParseFloat(matches[1], 64)
+		p.gpuResidency.HWActiveResidency = residency
+		
+		// Parse the frequency residency data in parentheses
+		openParenIdx := strings.Index(line, "(")
+		if openParenIdx != -1 {
+			freqDataStr := line[openParenIdx+1:]
+			freqDataStr = strings.TrimRight(freqDataStr, ")")
+			p.gpuResidency.HWActiveFreqResidency = parseFreqResidency(freqDataStr)
+		}
+		return
+	}
+
+	// Parse GPU idle residency
+	if matches := gpuIdleResidencyRegex.FindStringSubmatch(line); matches != nil {
+		residency, _ := strconv.ParseFloat(matches[1], 64)
+		p.gpuResidency.IdleResidency = residency
+		return
+	}
+
+	// Parse GPU software states
+	if matches := gpuSWStateRegex.FindStringSubmatch(line); matches != nil {
+		stateStr := matches[1]
+		states := parseGPUStates(stateStr)
+		if strings.Contains(line, "requested state") {
+			p.gpuResidency.SWRequestedStates = states
+		} else {
+			p.gpuResidency.SWStates = states
+		}
+		return
+	}
+
+	// Parse GPU power
+	if hasAll(strings.ToLower(line), "gpu", "power") {
+		var val float64
+		var ok bool
+		if val, ok = parseTrailingValue(line, "w"); ok {
+			p.gpuResidency.PowerMilliwatts = val * 1000 // Convert to milliwatts
+		} else if val, ok = parseTrailingValue(line, "mW"); ok {
+			p.gpuResidency.PowerMilliwatts = val
+		}
+	}
+}
+
+func (p *Parser) updateBatteryInfo(line string) {
+	if matches := batteryRegex.FindStringSubmatch(line); matches != nil {
+		battery, _ := strconv.ParseFloat(matches[1], 64)
+		p.system.BatteryPercent = battery
+	}
+}
+
+func parseFreqResidency(freqDataStr string) internal.CPUResidencyData {
+	residencies := make(internal.CPUResidencyData)
+	
+	// Find all matches of the frequency residency pattern
+	matches := cpuFreqResidencyRegex.FindAllStringSubmatch(freqDataStr, -1)
+	for _, match := range matches {
+		if len(match) >= 3 {
+			freq, err := strconv.ParseFloat(match[1], 64)
+			percent, err2 := strconv.ParseFloat(match[2], 64)
+			if err == nil && err2 == nil {
+				residencies[freq] = percent
+			}
+		}
+	}
+	
+	return residencies
+}
+
+func parseGPUStates(stateStr string) internal.GPUSoftwareStateData {
+	states := make(internal.GPUSoftwareStateData)
+	
+	// Split by space and process each "Pn : value%" pair
+	pairs := strings.Split(stateStr, " ")
+	for i := 0; i < len(pairs); i += 3 { // Each entry is "Pn", ":", "value%"
+		if i+2 < len(pairs) {
+			stateName := strings.Trim(pairs[i], ": ")
+			if strings.HasPrefix(stateName, "P") {
+				percentStr := strings.TrimRight(pairs[i+2], "%")
+				if value, err := strconv.ParseFloat(percentStr, 64); err == nil {
+					states[stateName] = value
+				}
+			}
+		}
+	}
+	
+	return states
+}
+
+// CalculateTotalActive calculates total active residency from the frequency map
+func CalculateTotalActive(residencyMap map[float64]float64) float64 {
+	total := 0.0
+	for _, percent := range residencyMap {
+		total += percent
+	}
+	return total
 }
 
 func deriveBusyPercent(activeNs uint64, explicitPercent string, window time.Duration) float64 {

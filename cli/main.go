@@ -16,12 +16,18 @@ import (
 
 func main() {
 	var (
-		interval    = flag.Duration("interval", 1*time.Second, "sampling interval (e.g., 500ms, 1s, 2s)")
-		jsonOutput  = flag.Bool("json", false, "output metrics in JSON format")
-		onlySystem  = flag.Bool("system", false, "only show system metrics, skip process metrics")
-		onlyProcess = flag.Bool("process", false, "only show process metrics, skip system metrics")
-		help        = flag.Bool("help", false, "show help message")
-		debug       = flag.Bool("debug", false, "show debug information")
+		interval        = flag.Duration("interval", 1*time.Second, "sampling interval (e.g., 500ms, 1s, 2s)")
+		jsonOutput      = flag.Bool("json", false, "output metrics in JSON format")
+		onlySystem      = flag.Bool("system", false, "only show system metrics, skip process metrics")
+		onlyProcess     = flag.Bool("process", false, "only show process metrics, skip system metrics")
+		onlyCPUResidency = flag.Bool("cpu-residency", false, "only show CPU residency metrics")
+		onlyGPUResidency = flag.Bool("gpu-residency", false, "only show GPU residency metrics")
+		onlyNetwork     = flag.Bool("network", false, "only show network metrics")
+		onlyDisk        = flag.Bool("disk", false, "only show disk metrics")
+		onlyBattery     = flag.Bool("battery", false, "only show battery metrics")
+		onlyInterrupts  = flag.Bool("interrupts", false, "only show interrupt metrics")
+		help            = flag.Bool("help", false, "show help message")
+		debug           = flag.Bool("debug", false, "show debug information")
 	)
 
 	flag.Parse()
@@ -41,12 +47,18 @@ func main() {
 		fmt.Printf("Debug: JSON Output: %t\n", *jsonOutput)
 		fmt.Printf("Debug: System only: %t\n", *onlySystem)
 		fmt.Printf("Debug: Process only: %t\n", *onlyProcess)
+		fmt.Printf("Debug: CPU Residency only: %t\n", *onlyCPUResidency)
+		fmt.Printf("Debug: GPU Residency only: %t\n", *onlyGPUResidency)
+		fmt.Printf("Debug: Network only: %t\n", *onlyNetwork)
+		fmt.Printf("Debug: Disk only: %t\n", *onlyDisk)
+		fmt.Printf("Debug: Battery only: %t\n", *onlyBattery)
+		fmt.Printf("Debug: Interrupts only: %t\n", *onlyInterrupts)
 	}
 
 	// Create config with custom interval - using more reliable sampler configuration
 	config := powermetrics.Config{
 		SampleWindow:     *interval,
-		PowermetricsArgs: []string{"--samplers", "cpu_power,gpu_power,thermal", "--show-process-gpu", "-i", fmt.Sprintf("%d", interval.Milliseconds())},
+		PowermetricsArgs: []string{"--samplers", "tasks,battery,network,disk,interrupts,cpu_power,gpu_power,ane_power,thermal", "--show-process-gpu", "--show-initial-usage", "-i", fmt.Sprintf("%d", interval.Milliseconds())},
 	}
 
 	// Set up signal handling for graceful shutdown
@@ -81,7 +93,102 @@ func main() {
 			fmt.Println("Debug: Received metrics")
 		}
 
-		if *onlyProcess {
+		if *onlyCPUResidency {
+			if len(metrics.CPUResidencies) > 0 {
+				if *jsonOutput {
+					data, _ := json.Marshal(metrics.CPUResidencies)
+					fmt.Println(string(data))
+				} else {
+					fmt.Printf("CPU Residencies: %d\n", len(metrics.CPUResidencies))
+					for _, cpu := range metrics.CPUResidencies {
+						fmt.Printf("  CPU %d: Freq %.0f MHz, Active: %.2f%%, Idle: %.2f%%, Down: %.2f%%\n",
+							cpu.CPUID, cpu.Frequency, calculateTotalActive(cpu.ActiveResidency), cpu.IdleResidency, cpu.DownResidency)
+						if len(cpu.ActiveResidency) > 0 {
+							fmt.Printf("    Frequency Residency: ")
+							for freq, percent := range cpu.ActiveResidency {
+								fmt.Printf("%.0fMHz:%.2f%% ", freq, percent)
+							}
+							fmt.Printf("\n")
+						}
+					}
+				}
+			}
+		} else if *onlyGPUResidency {
+			if metrics.GPUResidency != nil {
+				if *jsonOutput {
+					data, _ := json.Marshal(metrics.GPUResidency)
+					fmt.Println(string(data))
+				} else {
+					fmt.Printf("GPU Residency: HW Active: %.2f%%, Idle: %.2f%%, Power: %.2f mW\n",
+						metrics.GPUResidency.HWActiveResidency, metrics.GPUResidency.IdleResidency, metrics.GPUResidency.PowerMilliwatts)
+					if len(metrics.GPUResidency.HWActiveFreqResidency) > 0 {
+						fmt.Printf("  Frequency Residency: ")
+						for freq, percent := range metrics.GPUResidency.HWActiveFreqResidency {
+							fmt.Printf("%.0fMHz:%.2f%% ", freq, percent)
+						}
+						fmt.Printf("\n")
+					}
+					if len(metrics.GPUResidency.SWRequestedStates) > 0 {
+						fmt.Printf("  SW Requested States: ")
+						for state, percent := range metrics.GPUResidency.SWRequestedStates {
+							fmt.Printf("%s:%.2f%% ", state, percent)
+						}
+						fmt.Printf("\n")
+					}
+					if len(metrics.GPUResidency.SWStates) > 0 {
+						fmt.Printf("  SW States: ")
+						for state, percent := range metrics.GPUResidency.SWStates {
+							fmt.Printf("%s:%.2f%% ", state, percent)
+						}
+						fmt.Printf("\n")
+					}
+				}
+			}
+		} else if *onlyNetwork {
+			if metrics.Network != nil {
+				if *jsonOutput {
+					data, _ := json.Marshal(metrics.Network)
+					fmt.Println(string(data))
+				} else {
+					fmt.Printf("Network: Out %d packets/s, %d bytes/s | In %d packets/s, %d bytes/s\n",
+						int(metrics.Network.OutPacketsPerSec), int(metrics.Network.OutBytesPerSec),
+						int(metrics.Network.InPacketsPerSec), int(metrics.Network.InBytesPerSec))
+				}
+			}
+		} else if *onlyDisk {
+			if metrics.Disk != nil {
+				if *jsonOutput {
+					data, _ := json.Marshal(metrics.Disk)
+					fmt.Println(string(data))
+				} else {
+					fmt.Printf("Disk: Read %d ops/s, %d bytes/s | Write %d ops/s, %d bytes/s\n",
+						int(metrics.Disk.ReadOpsPerSec), int(metrics.Disk.ReadBytesPerSec),
+						int(metrics.Disk.WriteOpsPerSec), int(metrics.Disk.WriteBytesPerSec))
+				}
+			}
+		} else if *onlyBattery {
+			if metrics.SystemSample != nil && metrics.SystemSample.BatteryPercent > 0 {
+				if *jsonOutput {
+					data, _ := json.Marshal(map[string]float64{"battery_percent": metrics.SystemSample.BatteryPercent})
+					fmt.Println(string(data))
+				} else {
+					fmt.Printf("Battery: %.2f%%\n", metrics.SystemSample.BatteryPercent)
+				}
+			}
+		} else if *onlyInterrupts {
+			if len(metrics.Interrupts) > 0 {
+				if *jsonOutput {
+					data, _ := json.Marshal(metrics.Interrupts)
+					fmt.Println(string(data))
+				} else {
+					fmt.Printf("Interrupts: %d CPUs\n", len(metrics.Interrupts))
+					for _, intr := range metrics.Interrupts {
+						fmt.Printf("  CPU %d: Total IRQs %.2f/s, IPI %.2f/s, TIMER %.2f/s\n", 
+							intr.CPUID, intr.TotalIRQ, intr.IPI, intr.TIMER)
+					}
+				}
+			}
+		} else if *onlyProcess {
 			if len(metrics.GPUProcessSamples) > 0 {
 				if *jsonOutput {
 					data, _ := json.Marshal(metrics.GPUProcessSamples)
@@ -101,13 +208,14 @@ func main() {
 				data, _ := json.Marshal(metrics.SystemSample)
 				fmt.Println(string(data))
 			} else {
-				fmt.Printf("CPU Power: %.2f W, GPU Power: %.2f W, ANE Power: %.2f W, CPU Freq: %.0f MHz, GPU Freq: %.0f MHz, CPU Temp: %.2f°C, GPU Temp: %.2f°C, ANE Busy: %.2f%%\n",
+				fmt.Printf("CPU Power: %.2f W, GPU Power: %.2f W, ANE Power: %.2f W, CPU Freq: %.0f MHz, GPU Freq: %.0f MHz, CPU Temp: %.2f°C, GPU Temp: %.2f°C, ANE Busy: %.2f%%, Battery: %.2f%%\n",
 					metrics.SystemSample.CPUPowerWatts, metrics.SystemSample.GPUPowerWatts, metrics.SystemSample.ANEPowerWatts,
 					metrics.SystemSample.CPUFrequencyMHz, metrics.SystemSample.GPUFrequencyMHz,
 					metrics.SystemSample.CPUTemperatureC, metrics.SystemSample.GPUTemperatureC,
-					metrics.SystemSample.ANEBusyPercent)
+					metrics.SystemSample.ANEBusyPercent, metrics.SystemSample.BatteryPercent)
 			}
-		} else if !*onlyProcess && !*onlySystem {
+		} else if !*onlyProcess && !*onlySystem && !*onlyCPUResidency && !*onlyGPUResidency && 
+			!*onlyNetwork && !*onlyDisk && !*onlyBattery && !*onlyInterrupts {
 			// Show all metrics
 			output := make(map[string]interface{})
 
@@ -115,11 +223,11 @@ func main() {
 				if *jsonOutput {
 					output["system"] = metrics.SystemSample
 				} else {
-					fmt.Printf("CPU Power: %.2f W, GPU Power: %.2f W, CPU Freq: %.0f MHz, GPU Freq: %.0f MHz, CPU Temp: %.2f°C, GPU Temp: %.2f°C, ANE Busy: %.2f%%\n",
+					fmt.Printf("CPU Power: %.2f W, GPU Power: %.2f W, CPU Freq: %.0f MHz, GPU Freq: %.0f MHz, CPU Temp: %.2f°C, GPU Temp: %.2f°C, ANE Busy: %.2f%%, Battery: %.2f%%\n",
 						metrics.SystemSample.CPUPowerWatts, metrics.SystemSample.GPUPowerWatts,
 						metrics.SystemSample.CPUFrequencyMHz, metrics.SystemSample.GPUFrequencyMHz,
 						metrics.SystemSample.CPUTemperatureC, metrics.SystemSample.GPUTemperatureC,
-						metrics.SystemSample.ANEBusyPercent)
+						metrics.SystemSample.ANEBusyPercent, metrics.SystemSample.BatteryPercent)
 				}
 			}
 
@@ -147,6 +255,59 @@ func main() {
 				}
 			}
 
+			if len(metrics.CPUResidencies) > 0 {
+				if *jsonOutput {
+					output["cpu_residencies"] = metrics.CPUResidencies
+				} else {
+					fmt.Printf("CPU Residencies: %d\n", len(metrics.CPUResidencies))
+					for _, cpu := range metrics.CPUResidencies {
+						fmt.Printf("  CPU %d: Freq %.0f MHz, Active: %.2f%%, Idle: %.2f%%, Down: %.2f%%\n",
+							cpu.CPUID, cpu.Frequency, calculateTotalActive(cpu.ActiveResidency), cpu.IdleResidency, cpu.DownResidency)
+					}
+				}
+			}
+
+			if metrics.GPUResidency != nil {
+				if *jsonOutput {
+					output["gpu_residency"] = metrics.GPUResidency
+				} else {
+					fmt.Printf("GPU Residency: HW Active: %.2f%%, Idle: %.2f%%, Power: %.2f mW\n",
+						metrics.GPUResidency.HWActiveResidency, metrics.GPUResidency.IdleResidency, metrics.GPUResidency.PowerMilliwatts)
+				}
+			}
+
+			if metrics.Network != nil {
+				if *jsonOutput {
+					output["network"] = metrics.Network
+				} else {
+					fmt.Printf("Network: Out %d packets/s, %d bytes/s | In %d packets/s, %d bytes/s\n",
+						int(metrics.Network.OutPacketsPerSec), int(metrics.Network.OutBytesPerSec),
+						int(metrics.Network.InPacketsPerSec), int(metrics.Network.InBytesPerSec))
+				}
+			}
+
+			if metrics.Disk != nil {
+				if *jsonOutput {
+					output["disk"] = metrics.Disk
+				} else {
+					fmt.Printf("Disk: Read %d ops/s, %d bytes/s | Write %d ops/s, %d bytes/s\n",
+						int(metrics.Disk.ReadOpsPerSec), int(metrics.Disk.ReadBytesPerSec),
+						int(metrics.Disk.WriteOpsPerSec), int(metrics.Disk.WriteBytesPerSec))
+				}
+			}
+
+			if len(metrics.Interrupts) > 0 {
+				if *jsonOutput {
+					output["interrupts"] = metrics.Interrupts
+				} else {
+					fmt.Printf("Interrupts: %d CPUs\n", len(metrics.Interrupts))
+					for _, intr := range metrics.Interrupts {
+						fmt.Printf("  CPU %d: Total IRQs %.2f/s, IPI %.2f/s, TIMER %.2f/s\n", 
+							intr.CPUID, intr.TotalIRQ, intr.IPI, intr.TIMER)
+					}
+				}
+			}
+
 			if *jsonOutput {
 				data, _ := json.Marshal(output)
 				fmt.Println(string(data))
@@ -161,4 +322,13 @@ func main() {
 	if *debug {
 		fmt.Println("Debug: Exiting")
 	}
+}
+
+// Helper function to calculate total active residency from the frequency map
+func calculateTotalActive(residencyMap map[float64]float64) float64 {
+	total := 0.0
+	for _, percent := range residencyMap {
+		total += percent
+	}
+	return total
 }
