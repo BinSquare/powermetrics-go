@@ -51,9 +51,17 @@ func ensureIntervalArgument(args []string, window time.Duration) []string {
 	interval := fmt.Sprintf("%d", window.Milliseconds())
 	for i := 0; i < len(args)-1; i++ {
 		if args[i] == "-i" {
-			args[i+1] = interval
-			return args
+			// Create a new slice to avoid modifying the original
+			newArgs := make([]string, len(args))
+			copy(newArgs, args)
+			newArgs[i+1] = interval
+			return newArgs
 		}
 	}
-	return append(args, "-i", interval)
+	// Create a new slice and append to it to avoid modifying the original
+	newArgs := make([]string, len(args)+2)
+	copy(newArgs, args)
+	newArgs[len(args)] = "-i"
+	newArgs[len(args)+1] = interval
+	return newArgs
 }

@@ -8,7 +8,7 @@ import (
 )
 
 func TestNormalizeConfig(t *testing.T) {
-	t.Parallel()
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name     string
@@ -70,7 +70,7 @@ func TestNormalizeConfig(t *testing.T) {
 }
 
 func TestConvertToNanoseconds(t *testing.T) {
-	t.Parallel()
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name     string
@@ -98,7 +98,7 @@ func TestConvertToNanoseconds(t *testing.T) {
 }
 
 func TestClampPercent(t *testing.T) {
-	t.Parallel()
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name     string
@@ -125,7 +125,7 @@ func TestClampPercent(t *testing.T) {
 }
 
 func TestHasAll(t *testing.T) {
-	t.Parallel()
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name     string
@@ -152,7 +152,7 @@ func TestHasAll(t *testing.T) {
 }
 
 func TestHasNone(t *testing.T) {
-	t.Parallel()
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name     string
@@ -179,7 +179,7 @@ func TestHasNone(t *testing.T) {
 }
 
 func TestParseTrailingValue(t *testing.T) {
-	t.Parallel()
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name     string
@@ -198,7 +198,7 @@ func TestParseTrailingValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Don't use t.Parallel() to avoid race conditions
 			
 			result, found := parseTrailingValue(tt.line, tt.suffix)
 			if found != tt.found {
@@ -212,7 +212,7 @@ func TestParseTrailingValue(t *testing.T) {
 }
 
 func TestParseLeadingValueAfterColon(t *testing.T) {
-	t.Parallel()
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name     string
@@ -230,7 +230,7 @@ func TestParseLeadingValueAfterColon(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Don't use t.Parallel() to avoid race conditions
 			
 			result, found := parseLeadingValueAfterColon(tt.line, tt.suffix)
 			if found != tt.found {
@@ -244,7 +244,7 @@ func TestParseLeadingValueAfterColon(t *testing.T) {
 }
 
 func TestDeriveBusyPercent(t *testing.T) {
-	t.Parallel()
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name         string
@@ -262,7 +262,7 @@ func TestDeriveBusyPercent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Don't use t.Parallel() to avoid race conditions
 			
 			result := deriveBusyPercent(tt.activeNs, tt.explicitPercent, tt.window)
 			if result != tt.expected {
@@ -274,9 +274,7 @@ func TestDeriveBusyPercent(t *testing.T) {
 }
 
 func TestParser_ParseLineSystemMetrics(t *testing.T) {
-	t.Parallel()
-
-	parser := NewParser(Config{})
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name     string
@@ -338,7 +336,9 @@ func TestParser_ParseLineSystemMetrics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Don't use t.Parallel() to avoid race conditions
+			// Create a new parser instance to avoid concurrent access
+			parser := NewParser(Config{})
 			
 			metrics, err := parser.ParseLine(tt.line)
 			if err != nil {
@@ -364,9 +364,7 @@ func TestParser_ParseLineSystemMetrics(t *testing.T) {
 }
 
 func TestParser_ParseLineGPUProcess(t *testing.T) {
-	t.Parallel()
-
-	parser := NewParser(Config{SampleWindow: time.Second})
+	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
 		name     string
@@ -407,7 +405,9 @@ func TestParser_ParseLineGPUProcess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Don't use t.Parallel() to avoid race conditions
+			// Create a new parser instance to avoid concurrent access
+			parser := NewParser(Config{SampleWindow: time.Second})
 			
 			metrics, err := parser.ParseLine(tt.line)
 			if err != nil {
@@ -428,8 +428,7 @@ func TestParser_ParseLineGPUProcess(t *testing.T) {
 }
 
 func TestParser_updateClusterInfo(t *testing.T) {
-	t.Parallel()
-
+	// Don't use t.Parallel() to avoid race conditions
 	parser := NewParser(Config{})
 
 	// Test cluster online regex
@@ -483,8 +482,8 @@ func TestParser_updateClusterInfo(t *testing.T) {
 }
 
 func TestEnsureIntervalArgument(t *testing.T) {
-	t.Parallel()
-
+	// Don't use t.Parallel() to avoid race conditions
+	
 	tests := []struct {
 		name     string
 		args     []string
@@ -513,8 +512,7 @@ func TestEnsureIntervalArgument(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			
+			// Don't use t.Parallel() to avoid race conditions
 			result := ensureIntervalArgument(tt.args, tt.window)
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("ensureIntervalArgument(%v, %v) = %v, want %v", tt.args, tt.window, result, tt.expected)
@@ -524,7 +522,7 @@ func TestEnsureIntervalArgument(t *testing.T) {
 }
 
 func TestRegexCompilation(t *testing.T) {
-	t.Parallel()
+	// Don't use t.Parallel() to avoid race conditions
 
 	// Test that all regexes compile properly
 	regexes := []*regexp.Regexp{
@@ -560,10 +558,8 @@ func TestRegexCompilation(t *testing.T) {
 }
 
 func TestParser_ParseLineNewMetrics(t *testing.T) {
-	t.Parallel()
-
-	parser := NewParser(Config{})
-
+	// Don't use t.Parallel() since we're testing with a single parser across subtests
+	
 	tests := []struct {
 		name     string
 		line     string
@@ -667,7 +663,8 @@ func TestParser_ParseLineNewMetrics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Create a new parser for each subtest to avoid race conditions
+			parser := NewParser(Config{})
 			
 			metrics, err := parser.ParseLine(tt.line)
 			if err != nil {
@@ -708,8 +705,7 @@ func TestParser_ParseLineNewMetrics(t *testing.T) {
 }
 
 func TestParser_ParseBatteryMetrics(t *testing.T) {
-	t.Parallel()
-
+	// Don't use t.Parallel() to avoid race conditions
 	parser := NewParser(Config{})
 
 	line := "Battery: percent_charge: 75.5"
@@ -728,8 +724,7 @@ func TestParser_ParseBatteryMetrics(t *testing.T) {
 }
 
 func TestParser_ParseNetworkMetrics(t *testing.T) {
-	t.Parallel()
-
+	// Don't use t.Parallel() to avoid race conditions
 	parser := NewParser(Config{})
 
 	lines := []string{
@@ -763,8 +758,7 @@ func TestParser_ParseNetworkMetrics(t *testing.T) {
 }
 
 func TestParser_ParseDiskMetrics(t *testing.T) {
-	t.Parallel()
-
+	// Don't use t.Parallel() to avoid race conditions
 	parser := NewParser(Config{})
 
 	lines := []string{
@@ -823,8 +817,7 @@ func TestParseFreqResidency(t *testing.T) {
 }
 
 func TestParseLineParsingFromSampleLog(t *testing.T) {
-	t.Parallel()
-
+	// Don't use t.Parallel() to avoid race conditions
 	parser := NewParser(Config{})
 
 	// Test battery parsing
@@ -991,8 +984,7 @@ func TestParseLineParsingFromSampleLog(t *testing.T) {
 }
 
 func TestCompleteSampleLogParsing(t *testing.T) {
-	t.Parallel()
-
+	// Don't use t.Parallel() to avoid race conditions
 	// This test simulates parsing the complete sample log
 	sampleLogLines := []string{
 		"Machine model: Mac16,6",

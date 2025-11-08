@@ -65,6 +65,11 @@ func (p *Parser) ParseLine(line string) (*Metrics, error) {
 		return nil, nil
 	}
 
+	// Check if existing values were nil before update to detect new data
+	prevNetworkInfoWasNil := p.networkInfo == nil
+	prevDiskInfoWasNil := p.diskInfo == nil
+	prevSystem := p.system
+
 	p.updateClusterInfo(line)
 	p.updateCPUInfo(line)
 	p.updateNetworkInfo(line)
@@ -73,6 +78,15 @@ func (p *Parser) ParseLine(line string) (*Metrics, error) {
 	p.updateGPUResidencyInfo(line)
 	p.updateBatteryInfo(line)
 
+	// Check if any values changed or new values were added to decide whether to return metrics
+	systemChanged := p.system != prevSystem
+	networkChanged := (p.networkInfo != nil) && (prevNetworkInfoWasNil || p.networkInfo.InPacketsPerSec > 0 || p.networkInfo.OutPacketsPerSec > 0)
+	diskChanged := (p.diskInfo != nil) && (prevDiskInfoWasNil || p.diskInfo.ReadOpsPerSec > 0 || p.diskInfo.WriteOpsPerSec > 0)
+	clusterChanged := len(p.clusterInfo) > 0 // If cluster info is added, mark as changed
+	cpuResidencyChanged := len(p.cpuResidencies) > 0 // If CPU residency info is added, mark as changed
+	clusterResidencyChanged := len(p.clusterResidencies) > 0 // If cluster residency info is added, mark as changed
+	gpuResidencyChanged := p.gpuResidency != nil && (p.gpuResidency.HWActiveResidency > 0 || p.gpuResidency.IdleResidency > 0 || len(p.gpuResidency.HWActiveFreqResidency) > 0 || len(p.gpuResidency.SWStates) > 0)
+
 	if metrics, err := p.parseGPUProcessLine(line); err != nil {
 		return nil, err
 	} else if metrics != nil {
@@ -80,7 +94,65 @@ func (p *Parser) ParseLine(line string) (*Metrics, error) {
 	}
 
 	lower := strings.ToLower(line)
-	return p.parseSystemMetrics(line, lower), nil
+	systemMetrics := p.parseSystemMetrics(line, lower)
+	
+	// If any metrics-related data changed, return the full metrics structure
+	if systemChanged || networkChanged || diskChanged || clusterChanged || 
+	   cpuResidencyChanged || clusterResidencyChanged || gpuResidencyChanged {
+		return p.buildMetrics(), nil
+	}
+	
+	return systemMetrics, nil
+}
+
+func (p *Parser) buildMetrics() *Metrics {
+	metrics := &Metrics{}
+
+	if p.networkInfo != nil {
+		metrics.Network = p.networkInfo
+	}
+
+	if p.diskInfo != nil {
+		metrics.Disk = p.diskInfo
+	}
+
+	if clusters := p.clusterSnapshot(); len(clusters) > 0 {
+		metrics.Clusters = clusters
+	}
+
+	// Add new metrics
+	if len(p.cpuResidencies) > 0 {
+		cpuResidencies := make([]internal.CPUResidencyMetrics, 0, len(p.cpuResidencies))
+		for _, cpu := range p.cpuResidencies {
+			cpuResidencies = append(cpuResidencies, *cpu)
+		}
+		metrics.CPUResidencies = cpuResidencies
+	}
+
+	if len(p.clusterResidencies) > 0 {
+		clusterResidencies := make([]internal.ClusterResidencyMetrics, 0, len(p.clusterResidencies))
+		for _, cluster := range p.clusterResidencies {
+			clusterResidencies = append(clusterResidencies, *cluster)
+		}
+		metrics.ClusterResidencies = clusterResidencies
+	}
+
+	if p.gpuResidency != nil && (p.gpuResidency.HWActiveResidency > 0 || p.gpuResidency.IdleResidency > 0 || len(p.gpuResidency.HWActiveFreqResidency) > 0 || len(p.gpuResidency.SWStates) > 0) {
+		metrics.GPUResidency = p.gpuResidency
+	}
+
+	if len(p.interruptInfo) > 0 {
+		interrupts := make([]internal.InterruptMetrics, 0, len(p.interruptInfo))
+		for _, interrupt := range p.interruptInfo {
+			interrupts = append(interrupts, *interrupt)
+		}
+		metrics.Interrupts = interrupts
+	}
+
+	// Always include system metrics even if not updated from current line
+	metrics.SystemSample = &p.system
+
+	return metrics
 }
 
 func (p *Parser) parseGPUProcessLine(line string) (*Metrics, error) {
@@ -402,21 +474,21 @@ func (p *Parser) clusterSnapshot() []ClusterInfo {
 }
 
 func (p *Parser) updateCPUInfo(line string) {
-	// Check if the line is for a specific CPU
+	// Check if the line is for a specific CPU frequency like "CPU 0 frequency: 1338 MHz"
+	cpuFreqMatch := regexp.MustCompile(`CPU (\d+) frequency: ([\d.]+) MHz`).FindStringSubmatch(line)
+	if cpuFreqMatch != nil {
+		cpuID, _ := strconv.Atoi(cpuFreqMatch[1])
+		freq, _ := strconv.ParseFloat(cpuFreqMatch[2], 64)
+		cpu := p.ensureCPUResidency(cpuID)
+		cpu.Frequency = freq
+		return
+	}
+
+	// Check if the line is for a specific CPU interrupt line
 	cpuMatch := interruptRegex.FindStringSubmatch(line)
 	if cpuMatch != nil {
 		cpuID, _ := strconv.Atoi(cpuMatch[1])
-		cpu := p.ensureCPUResidency(cpuID)
-		// Capture the main frequency for this CPU from the line like "CPU 0 frequency: 1338 MHz"
-		parts := strings.Split(line, " ")
-		for i, part := range parts {
-			if part == "frequency:" && i+1 < len(parts) {
-				freqStr := strings.TrimRight(parts[i+1], "MHz")
-				if freq, err := strconv.ParseFloat(freqStr, 64); err == nil {
-					cpu.Frequency = freq
-				}
-			}
-		}
+		p.ensureCPUResidency(cpuID)
 		return
 	}
 

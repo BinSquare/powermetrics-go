@@ -87,11 +87,21 @@ func main() {
 		fmt.Println("Debug: Waiting for metrics...")
 	}
 
-	// Process metrics
+	// Process metrics - add rate limiting to respect the specified interval
+	lastOutputTime := time.Now()
+	
 	for metrics := range metricsChan {
 		if *debug {
 			fmt.Println("Debug: Received metrics")
 		}
+
+		// Check if enough time has passed since the last output
+		if time.Since(lastOutputTime) < *interval {
+			continue // Skip this metric, wait for the interval to pass
+		}
+		
+		// Update the last output time
+		lastOutputTime = time.Now()
 
 		if *onlyCPUResidency {
 			if len(metrics.CPUResidencies) > 0 {
