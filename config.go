@@ -8,8 +8,9 @@ import (
 const defaultPowermetricsPath = "/usr/bin/powermetrics"
 
 var defaultPowermetricsArgs = []string{
-	"--samplers", "default",
+	"--samplers", "tasks,battery,network,disk,interrupts,cpu_power,gpu_power,ane_power,thermal",
 	"--show-process-gpu",
+	"--show-initial-usage",
 	"-i", "1000",
 }
 
