@@ -33,6 +33,7 @@ var (
 	gpuHwActiveResidencyRegex = regexp.MustCompile(`GPU HW active residency: +([\d.]+)%`)
 	gpuIdleResidencyRegex = regexp.MustCompile(`GPU idle residency: +([\d.]+)%`)
 	gpuSWStateRegex = regexp.MustCompile(`GPU SW (?:requested state|state): \(([^)]+)\)`)
+	gpuStateValueRegex = regexp.MustCompile(`([A-Za-z0-9_]+)\s*:\s*([\d.]+)%`)
 )
 
 // ParseLine parses a single line of powermetrics output and returns the derived metrics.
@@ -85,7 +86,14 @@ func (p *Parser) ParseLine(line string) (*Metrics, error) {
 	clusterChanged := len(p.clusterInfo) > 0 // If cluster info is added, mark as changed
 	cpuResidencyChanged := len(p.cpuResidencies) > 0 // If CPU residency info is added, mark as changed
 	clusterResidencyChanged := len(p.clusterResidencies) > 0 // If cluster residency info is added, mark as changed
-	gpuResidencyChanged := p.gpuResidency != nil && (p.gpuResidency.HWActiveResidency > 0 || p.gpuResidency.IdleResidency > 0 || len(p.gpuResidency.HWActiveFreqResidency) > 0 || len(p.gpuResidency.SWStates) > 0)
+	
+	// Check GPU residency changes - any populated residency data counts as a change
+	gpuResidencyChanged := p.gpuResidency != nil && (
+		p.gpuResidency.HWActiveResidency > 0 || 
+		p.gpuResidency.IdleResidency > 0 || 
+		len(p.gpuResidency.HWActiveFreqResidency) > 0 || 
+		len(p.gpuResidency.SWStates) > 0 ||  // This should catch SW states
+		len(p.gpuResidency.SWRequestedStates) > 0)
 
 	if metrics, err := p.parseGPUProcessLine(line); err != nil {
 		return nil, err
@@ -731,7 +739,6 @@ func (p *Parser) updateGPUResidencyInfo(line string) {
 		} else {
 			p.gpuResidency.SWStates = states
 		}
-		return
 	}
 
 	// Parse GPU power
@@ -773,18 +780,15 @@ func parseFreqResidency(freqDataStr string) internal.CPUResidencyData {
 
 func parseGPUStates(stateStr string) internal.GPUSoftwareStateData {
 	states := make(internal.GPUSoftwareStateData)
-	
-	// Split by space and process each "Pn : value%" pair
-	pairs := strings.Split(stateStr, " ")
-	for i := 0; i < len(pairs); i += 3 { // Each entry is "Pn", ":", "value%"
-		if i+2 < len(pairs) {
-			stateName := strings.Trim(pairs[i], ": ")
-			if strings.HasPrefix(stateName, "P") {
-				percentStr := strings.TrimRight(pairs[i+2], "%")
-				if value, err := strconv.ParseFloat(percentStr, 64); err == nil {
-					states[stateName] = value
-				}
-			}
+
+	for _, match := range gpuStateValueRegex.FindAllStringSubmatch(stateStr, -1) {
+		stateName := strings.TrimSpace(match[1])
+		if stateName == "" {
+			continue
+		}
+
+		if value, err := strconv.ParseFloat(match[2], 64); err == nil {
+			states[stateName] = value
 		}
 	}
 	
