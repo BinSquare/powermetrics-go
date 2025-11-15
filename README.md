@@ -2,56 +2,10 @@
 
 Go library that wraps the macOS powermetrics to monitor system performance metrics including CPU/GPU power, frequency, and process activity.
 
-Powermetrics always outputs the Apple Neural Engine (ANE) data as 0 for me. I welcome contributions if I'm wrong.
+You can use this library to build tools that use or display sys information.
 
-- Note: Temperature values is 0 on Apple Silicon Macs (M1/M2/M3/M4), they seem to report thermal pressure "levels" instead of temp for some reason.
-
-## Here's an example of information you can get:
-
-The following outputs shows what each type of metric looks like based on the sample log:
-
-### CPU Cluster Information
-
-```
-
-E-Cluster Online: 100%
-E-Cluster HW active frequency: 1293 MHz
-E-Cluster HW active residency: 100.00% (1020 MHz:  75% 1404 MHz: 3.5% 1788 MHz: 5.1% 2112 MHz: 5.0% 2352 MHz: 5.0% 2532 MHz: 2.5% 2592 MHz: 3.9%)
-E-Cluster idle residency:   0.00%
-E-Cluster down residency:   0.00%
-```
-
-### GPU Residency Metrics
-
-```
-
-GPU HW active frequency: 338 MHz
-GPU HW active residency: 1.63% (338 MHz: 1.6% 618 MHz: 0% 796 MHz: 0% 924 MHz: 0% 952 MHz: 0% 1056 MHz: 0% 1062 MHz: 0% 1182 MHz: 0% 1182 MHz: 0% 1312 MHz: 0% 1242 MHz: 0% 1380 MHz: 0% 1326 MHz: 0% 1470 MHz: 0% 1578 MHz: 0%)
-GPU SW requested state: (P1 : 100% P2 : 0% P3 : 0% P4 : 0% P5 : 0% P6 : 0% P7 : 0% P8 : 0% P9 : 0% P10 : 0% P11 : 0% P12 : 0% P13 : 0% P14 : 0% P15 : 0%)
-GPU SW state: (SW_P1 : 1.6% SW_P2 : 0% SW_P3 : 0% SW_P4 : 0% SW_P5 : 0% SW_P6 : 0% SW_P7 : 0% SW_P8 : 0% SW_P9 : 0% SW_P10 : 0% SW_P11 : 0% SW_P12 : 0% SW_P13 : 0% SW_P14 : 0% SW_P15 : 0%)
-GPU idle residency: 98.37%
-GPU Power: 28 mW
-```
-
-### Network Metrics
-
-```
-
-out: 57.75 packets/s, 4586.65 bytes/s
-in: 86.02 packets/s, 113827.21 bytes/s
-
-```
-
-### Disk Metrics
-
-```
-
-read: 8.56 ops/s 45.67 KBytes/s
-write: 73.88 ops/s 2070.85 KBytes/s
-
-```
-
-````
+- Powermetrics always outputs the Apple Neural Engine (ANE) data as 0 for me. Please contribute if I'm mis-parsing outputs!
+- Temperature on Apple Silicon Macs (M1/M2/M3/M4) report thermal pressure "levels". Different versions of powermetrics may not follow same parsing.
 
 ## Requirements
 
@@ -62,7 +16,7 @@ write: 73.88 ops/s 2070.85 KBytes/s
 
 ```bash
 go get github.com/BinSquare/powermetrics-go
-````
+```
 
 ## SDK Usage Examples
 
@@ -112,7 +66,7 @@ parser := powermetrics.NewParser(config)
 metricsChan, err := parser.Run(ctx)
 ```
 
-## Whatever you build - you need to run it with sudo because it spins an powermetrics process under the hood.
+## Notes on execution.
 
 The `powermetrics` command requires root privileges to access system performance counters. This means you must run your application with `sudo`:
 
@@ -174,11 +128,11 @@ sudo ./your_program
   - `IPI`: Inter-processor interrupts per second
   - `TIMER`: Timer interrupts per second
 
-### Bundled the /cli folder, an example application of using this library.
+### Bundled an example in /example folder.
 
 ```bash
 # Build the CLI tool from the cli directory
-cd cli
+cd examples/cli
 go build -o powermetrics-cli
 
 # Run with sudo (required for powermetrics)
@@ -208,7 +162,7 @@ Available options:
 
 ### CLI Examples
 
-```bash
+````bash
 # Default output every second
 sudo ./powermetrics-cli
 
@@ -221,10 +175,50 @@ sudo ./powermetrics-cli -system -json
 # Show debug information
 sudo ./powermetrics-cli -debug
 
-# Output example (Apple Silicon Macs may show N/A for temperature values):
-# CPU Power: 1.23 W, GPU Power: 0.45 W, ANE Power: 0.12 W, CPU Freq: 2447 MHz, GPU Freq: 338 MHz, CPU Temp: N/A, GPU Temp: N/A, ANE Busy: 0.00%
+# Output example (Apple Silicon Macs may show N/A for temperature values): # CPU Power: 1.23 W, GPU Power: 0.45 W, ANE Power: 0.12 W, CPU Freq: 2447 MHz, GPU Freq: 338 MHz, CPU Temp: N/A, GPU Temp: N/A, ANE Busy: 0.00% ```
+
+## Samples
+
+### CPU Cluster Information
+
+````
+
+E-Cluster Online: 100%
+E-Cluster HW active frequency: 1293 MHz
+E-Cluster HW active residency: 100.00% (1020 MHz: 75% 1404 MHz: 3.5% 1788 MHz: 5.1% 2112 MHz: 5.0% 2352 MHz: 5.0% 2532 MHz: 2.5% 2592 MHz: 3.9%)
+E-Cluster idle residency: 0.00%
+E-Cluster down residency: 0.00%
+
+```
+
+### GPU Residency Metrics
+
+```
+
+GPU HW active frequency: 338 MHz
+GPU HW active residency: 1.63% (338 MHz: 1.6% 618 MHz: 0% 796 MHz: 0% 924 MHz: 0% 952 MHz: 0% 1056 MHz: 0% 1062 MHz: 0% 1182 MHz: 0% 1182 MHz: 0% 1312 MHz: 0% 1242 MHz: 0% 1380 MHz: 0% 1326 MHz: 0% 1470 MHz: 0% 1578 MHz: 0%)
+GPU SW requested state: (P1 : 100% P2 : 0% P3 : 0% P4 : 0% P5 : 0% P6 : 0% P7 : 0% P8 : 0% P9 : 0% P10 : 0% P11 : 0% P12 : 0% P13 : 0% P14 : 0% P15 : 0%)
+GPU SW state: (SW_P1 : 1.6% SW_P2 : 0% SW_P3 : 0% SW_P4 : 0% SW_P5 : 0% SW_P6 : 0% SW_P7 : 0% SW_P8 : 0% SW_P9 : 0% SW_P10 : 0% SW_P11 : 0% SW_P12 : 0% SW_P13 : 0% SW_P14 : 0% SW_P15 : 0%)
+GPU idle residency: 98.37%
+GPU Power: 28 mW
+
+```
+
+### Disk Metrics
+
+```
+
+read: 8.56 ops/s 45.67 KBytes/s
+write: 73.88 ops/s 2070.85 KBytes/s
+
 ```
 
 ## License
 
 Apache 2.0 license.
+
+```
+
+```
+
+```
