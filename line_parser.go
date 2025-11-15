@@ -698,10 +698,15 @@ func (p *Parser) ensureInterruptInfo(cpuID int) *InterruptMetrics {
 }
 
 func (p *Parser) updateGPUResidencyInfo(line string) {
+	lowerLine := strings.ToLower(line)
+
 	// Parse GPU HW active frequency
 	if matches := gpuFreqRegex.FindStringSubmatch(line); matches != nil {
 		freq, _ := strconv.ParseFloat(matches[1], 64)
-		p.gpuResidency.PowerMilliwatts = freq // Temporary storage until we process the GPU power line
+		p.frequencyMHz = freq
+		if p.system.GPUFrequencyMHz == 0 {
+			p.system.GPUFrequencyMHz = freq
+		}
 		return
 	}
 
@@ -739,12 +744,12 @@ func (p *Parser) updateGPUResidencyInfo(line string) {
 	}
 
 	// Parse GPU power
-	if hasAll(strings.ToLower(line), "gpu", "power") {
+	if hasAll(lowerLine, "gpu", "power") {
 		var val float64
 		var ok bool
 		if val, ok = parseTrailingValue(line, "w"); ok {
 			p.gpuResidency.PowerMilliwatts = val * 1000 // Convert to milliwatts
-		} else if val, ok = parseTrailingValue(line, "mW"); ok {
+		} else if val, ok = parseTrailingValue(line, "mw"); ok {
 			p.gpuResidency.PowerMilliwatts = val
 		}
 	}

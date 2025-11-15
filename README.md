@@ -22,6 +22,8 @@ go get github.com/BinSquare/powermetrics-go
 
 ### Basic Usage
 
+Prefer the streaming helpers (`RunDefaultStream`/`RunWithErrors`) so you can consume both metrics and runtime errors from `powermetrics`.
+
 ```go
 package main
 
@@ -36,14 +38,19 @@ import (
 func main() {
     ctx := context.Background()
 
-    // Start collecting metrics (requires sudo)
-    metricsChan, err := powermetrics.RunDefault(ctx)
+    stream, err := powermetrics.RunDefaultStream(ctx)
     if err != nil {
         log.Fatal(err)
     }
 
-    // Process metrics
-    for metrics := range metricsChan {
+    go func() {
+        for err := range stream.Errors {
+            log.Printf("powermetrics error: %v", err)
+        }
+    }()
+
+    // Process metrics (the powermetrics binary still requires sudo)
+    for metrics := range stream.Metrics {
         if metrics.SystemSample != nil {
             fmt.Printf("CPU Power: %.2f W | GPU Power: %.2f W | Battery: %.2f%%\n",
                 metrics.SystemSample.CPUPowerWatts,
@@ -57,16 +64,24 @@ func main() {
 ### Custom Configuration
 
 ```go
+ctx := context.Background()
 config := powermetrics.Config{
     SampleWindow:     500 * time.Millisecond,
     PowermetricsArgs: []string{"--samplers", "cpu_power,gpu_power", "-i", "500"},
 }
 
 parser := powermetrics.NewParser(config)
-metricsChan, err := parser.Run(ctx)
+stream, err := parser.RunWithErrors(ctx)
+if err != nil {
+    log.Fatal(err)
+}
+
+for metrics := range stream.Metrics {
+    // ...
+}
 ```
 
-## Notes on execution.
+## Running powermetrics
 
 The `powermetrics` command requires root privileges to access system performance counters. This means you must run your application with `sudo`:
 
@@ -128,12 +143,11 @@ sudo ./your_program
   - `IPI`: Inter-processor interrupts per second
   - `TIMER`: Timer interrupts per second
 
-### Bundled an example in /example folder.
+### CLI Example (`examples/cli`)
 
 ```bash
-# Build the CLI tool from the cli directory
-cd examples/cli
-go build -o powermetrics-cli
+# Build the CLI tool
+go build -o powermetrics-cli ./examples/cli
 
 # Run with sudo (required for powermetrics)
 sudo ./powermetrics-cli
@@ -150,7 +164,7 @@ Available options:
 - `-interval`: Sampling interval (default 1s, e.g., 500ms, 1s, 2s)
 - `-json`: Output metrics in JSON format
 - `-system`: Only show system metrics
-- `-process`: Only show process metrics
+- `-process`: Only show GPU process metrics
 - `-cpu-residency`: Only show CPU residency metrics with detailed frequency breakdowns
 - `-gpu-residency`: Only show GPU residency metrics with software/hardware state distributions
 - `-network`: Only show network metrics (packets/bytes in/out per second)
@@ -162,7 +176,7 @@ Available options:
 
 ### CLI Examples
 
-````bash
+```bash
 # Default output every second
 sudo ./powermetrics-cli
 
@@ -174,51 +188,22 @@ sudo ./powermetrics-cli -system -json
 
 # Show debug information
 sudo ./powermetrics-cli -debug
+```
 
-# Output example (Apple Silicon Macs may show N/A for temperature values): # CPU Power: 1.23 W, GPU Power: 0.45 W, ANE Power: 0.12 W, CPU Freq: 2447 MHz, GPU Freq: 338 MHz, CPU Temp: N/A, GPU Temp: N/A, ANE Busy: 0.00% ```
+### Output Example
+
+```text
+CPU Power: 1.23 W, GPU Power: 0.45 W, ANE Power: 0.12 W, CPU Freq: 2447 MHz,
+GPU Freq: 338 MHz, CPU Temp: N/A, GPU Temp: N/A, ANE Busy: 0.00%, Battery: 82.17%
+GPU Processes: 2
+  PID: 1234, Name: WindowServer, Busy: 35.20%, Active: 17600000 ns
+  PID: 5678, Name: SampleApp, Busy: 12.50%, Active: 6250000 ns
+```
 
 ## Samples
 
-### CPU Cluster Information
-
-````
-
-E-Cluster Online: 100%
-E-Cluster HW active frequency: 1293 MHz
-E-Cluster HW active residency: 100.00% (1020 MHz: 75% 1404 MHz: 3.5% 1788 MHz: 5.1% 2112 MHz: 5.0% 2352 MHz: 5.0% 2532 MHz: 2.5% 2592 MHz: 3.9%)
-E-Cluster idle residency: 0.00%
-E-Cluster down residency: 0.00%
-
-```
-
-### GPU Residency Metrics
-
-```
-
-GPU HW active frequency: 338 MHz
-GPU HW active residency: 1.63% (338 MHz: 1.6% 618 MHz: 0% 796 MHz: 0% 924 MHz: 0% 952 MHz: 0% 1056 MHz: 0% 1062 MHz: 0% 1182 MHz: 0% 1182 MHz: 0% 1312 MHz: 0% 1242 MHz: 0% 1380 MHz: 0% 1326 MHz: 0% 1470 MHz: 0% 1578 MHz: 0%)
-GPU SW requested state: (P1 : 100% P2 : 0% P3 : 0% P4 : 0% P5 : 0% P6 : 0% P7 : 0% P8 : 0% P9 : 0% P10 : 0% P11 : 0% P12 : 0% P13 : 0% P14 : 0% P15 : 0%)
-GPU SW state: (SW_P1 : 1.6% SW_P2 : 0% SW_P3 : 0% SW_P4 : 0% SW_P5 : 0% SW_P6 : 0% SW_P7 : 0% SW_P8 : 0% SW_P9 : 0% SW_P10 : 0% SW_P11 : 0% SW_P12 : 0% SW_P13 : 0% SW_P14 : 0% SW_P15 : 0%)
-GPU idle residency: 98.37%
-GPU Power: 28 mW
-
-```
-
-### Disk Metrics
-
-```
-
-read: 8.56 ops/s 45.67 KBytes/s
-write: 73.88 ops/s 2070.85 KBytes/s
-
-```
+See `powermetrics_sample.log` for a complete capture (CPU clusters, GPU residency, disk, network, battery, interrupts). It is the same file used by the parser tests and demonstrates the exact text the library understands.
 
 ## License
 
 Apache 2.0 license.
-
-```
-
-```
-
-```
