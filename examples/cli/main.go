@@ -16,18 +16,18 @@ import (
 
 func main() {
 	var (
-		interval        = flag.Duration("interval", 1*time.Second, "sampling interval (e.g., 500ms, 1s, 2s)")
-		jsonOutput      = flag.Bool("json", false, "output metrics in JSON format")
-		onlySystem      = flag.Bool("system", false, "only show system metrics, skip process metrics")
-		onlyProcess     = flag.Bool("process", false, "only show process metrics, skip system metrics")
+		interval         = flag.Duration("interval", 1*time.Second, "sampling interval (e.g., 500ms, 1s, 2s)")
+		jsonOutput       = flag.Bool("json", false, "output metrics in JSON format")
+		onlySystem       = flag.Bool("system", false, "only show system metrics, skip process metrics")
+		onlyProcess      = flag.Bool("process", false, "only show process metrics, skip system metrics")
 		onlyCPUResidency = flag.Bool("cpu-residency", false, "only show CPU residency metrics")
 		onlyGPUResidency = flag.Bool("gpu-residency", false, "only show GPU residency metrics")
-		onlyNetwork     = flag.Bool("network", false, "only show network metrics")
-		onlyDisk        = flag.Bool("disk", false, "only show disk metrics")
-		onlyBattery     = flag.Bool("battery", false, "only show battery metrics")
-		onlyInterrupts  = flag.Bool("interrupts", false, "only show interrupt metrics")
-		help            = flag.Bool("help", false, "show help message")
-		debug           = flag.Bool("debug", false, "show debug information")
+		onlyNetwork      = flag.Bool("network", false, "only show network metrics")
+		onlyDisk         = flag.Bool("disk", false, "only show disk metrics")
+		onlyBattery      = flag.Bool("battery", false, "only show battery metrics")
+		onlyInterrupts   = flag.Bool("interrupts", false, "only show interrupt metrics")
+		help             = flag.Bool("help", false, "show help message")
+		debug            = flag.Bool("debug", false, "show debug information")
 	)
 
 	flag.Parse()
@@ -65,7 +65,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	
+
 	go func() {
 		<-sigChan
 		fmt.Println("\nReceived signal, stopping...")
@@ -89,7 +89,7 @@ func main() {
 
 	// Process metrics - add rate limiting to respect the specified interval
 	lastOutputTime := time.Now()
-	
+
 	for metrics := range metricsChan {
 		if *debug {
 			fmt.Println("Debug: Received metrics")
@@ -99,7 +99,7 @@ func main() {
 		if time.Since(lastOutputTime) < *interval {
 			continue // Skip this metric, wait for the interval to pass
 		}
-		
+
 		// Update the last output time
 		lastOutputTime = time.Now()
 
@@ -193,25 +193,48 @@ func main() {
 				} else {
 					fmt.Printf("Interrupts: %d CPUs\n", len(metrics.Interrupts))
 					for _, intr := range metrics.Interrupts {
-						fmt.Printf("  CPU %d: Total IRQs %.2f/s, IPI %.2f/s, TIMER %.2f/s\n", 
+						fmt.Printf("  CPU %d: Total IRQs %.2f/s, IPI %.2f/s, TIMER %.2f/s\n",
 							intr.CPUID, intr.TotalIRQ, intr.IPI, intr.TIMER)
 					}
 				}
 			}
 		} else if *onlyProcess {
-			if len(metrics.GPUProcessSamples) > 0 {
-				if *jsonOutput {
-					data, _ := json.Marshal(metrics.GPUProcessSamples)
+			if *jsonOutput {
+				payload := make(map[string]interface{})
+				if len(metrics.ProcessSamples) > 0 {
+					payload["processes"] = metrics.ProcessSamples
+				}
+				if len(metrics.GPUProcessSamples) > 0 {
+					payload["gpu_processes"] = metrics.GPUProcessSamples
+				}
+				if len(payload) > 0 {
+					data, _ := json.Marshal(payload)
 					fmt.Println(string(data))
-				} else {
+				} else if *debug {
+					fmt.Println("Debug: No process samples available in this metrics update")
+				}
+			} else {
+				shown := false
+				if len(metrics.ProcessSamples) > 0 {
+					shown = true
+					fmt.Printf("Processes: %d\n", len(metrics.ProcessSamples))
+					for _, proc := range metrics.ProcessSamples {
+						fmt.Printf("  PID: %d, Name: %s, CPU: %.2f ms/s, User: %.2f%%, Deadlines <2ms: %.2f, 2-5ms: %.2f, Wakeups Intr: %.2f, Pkg Idle: %.2f\n",
+							proc.PID, proc.Name, proc.CPUMsPerSec, proc.UserPercent,
+							proc.DeadlinesLT2Ms, proc.Deadlines2To5Ms, proc.WakeupsInterrupts, proc.WakeupsPkgIdle)
+					}
+				}
+				if len(metrics.GPUProcessSamples) > 0 {
+					shown = true
 					fmt.Printf("GPU Processes: %d\n", len(metrics.GPUProcessSamples))
 					for _, proc := range metrics.GPUProcessSamples {
-						fmt.Printf("  PID: %d, Name: %s, Busy: %.2f%%, Active: %d ns\n", 
+						fmt.Printf("  PID: %d, Name: %s, Busy: %.2f%%, Active: %d ns\n",
 							proc.PID, proc.Name, proc.BusyPercent, proc.ActiveNanos)
 					}
 				}
-			} else if *debug {
-				fmt.Println("Debug: No GPU process samples available in this metrics update")
+				if !shown && *debug {
+					fmt.Println("Debug: No process samples available in this metrics update")
+				}
 			}
 		} else if *onlySystem && metrics.SystemSample != nil {
 			if *jsonOutput {
@@ -224,7 +247,7 @@ func main() {
 					metrics.SystemSample.CPUTemperatureC, metrics.SystemSample.GPUTemperatureC,
 					metrics.SystemSample.ANEBusyPercent, metrics.SystemSample.BatteryPercent)
 			}
-		} else if !*onlyProcess && !*onlySystem && !*onlyCPUResidency && !*onlyGPUResidency && 
+		} else if !*onlyProcess && !*onlySystem && !*onlyCPUResidency && !*onlyGPUResidency &&
 			!*onlyNetwork && !*onlyDisk && !*onlyBattery && !*onlyInterrupts {
 			// Show all metrics
 			output := make(map[string]interface{})
@@ -241,13 +264,21 @@ func main() {
 				}
 			}
 
+			if len(metrics.ProcessSamples) > 0 {
+				if *jsonOutput {
+					output["processes"] = metrics.ProcessSamples
+				} else if *debug {
+					fmt.Printf("Processes available: %d (use -process to display details)\n", len(metrics.ProcessSamples))
+				}
+			}
+
 			if len(metrics.GPUProcessSamples) > 0 {
 				if *jsonOutput {
-					output["processes"] = metrics.GPUProcessSamples
+					output["gpu_processes"] = metrics.GPUProcessSamples
 				} else {
 					fmt.Printf("GPU Processes: %d\n", len(metrics.GPUProcessSamples))
 					for _, proc := range metrics.GPUProcessSamples {
-						fmt.Printf("  PID: %d, Name: %s, Busy: %.2f%%, Active: %d ns\n", 
+						fmt.Printf("  PID: %d, Name: %s, Busy: %.2f%%, Active: %d ns\n",
 							proc.PID, proc.Name, proc.BusyPercent, proc.ActiveNanos)
 					}
 				}
@@ -312,7 +343,7 @@ func main() {
 				} else {
 					fmt.Printf("Interrupts: %d CPUs\n", len(metrics.Interrupts))
 					for _, intr := range metrics.Interrupts {
-						fmt.Printf("  CPU %d: Total IRQs %.2f/s, IPI %.2f/s, TIMER %.2f/s\n", 
+						fmt.Printf("  CPU %d: Total IRQs %.2f/s, IPI %.2f/s, TIMER %.2f/s\n",
 							intr.CPUID, intr.TotalIRQ, intr.IPI, intr.TIMER)
 					}
 				}

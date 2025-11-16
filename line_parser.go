@@ -37,30 +37,56 @@ var (
 // ParseLine parses a single line of powermetrics output and returns the derived metrics.
 func (p *Parser) ParseLine(line string) (*Metrics, error) {
 	trimmed := strings.TrimSpace(line)
-	if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+	if trimmed == "" {
+		if metrics := p.flushProcessSamples(); metrics != nil {
+			return metrics, nil
+		}
+		return nil, nil
+	}
+	if strings.HasPrefix(trimmed, "--") {
 		return nil, nil
 	}
 
 	line = trimmed
 
 	// Handle sections
-	if strings.Contains(line, "**** Processor usage ****") {
-		// This indicates we're starting the processor usage section
+	if strings.Contains(line, "*** Running tasks ***") {
+		// reset any existing process accumulation
+		p.processSamples = nil
+		return nil, nil
+	} else if strings.Contains(line, "**** Processor usage ****") {
+		if metrics := p.flushProcessSamples(); metrics != nil {
+			return metrics, nil
+		}
 		return nil, nil
 	} else if strings.Contains(line, "**** Network activity ****") {
-		// This indicates we're starting the network activity section
+		if metrics := p.flushProcessSamples(); metrics != nil {
+			return metrics, nil
+		}
 		return nil, nil
 	} else if strings.Contains(line, "**** Disk activity ****") {
-		// This indicates we're starting the disk activity section
+		if metrics := p.flushProcessSamples(); metrics != nil {
+			return metrics, nil
+		}
 		return nil, nil
 	} else if strings.Contains(line, "****  Interrupt distribution ****") {
-		// This indicates we're starting the interrupt distribution section
+		if metrics := p.flushProcessSamples(); metrics != nil {
+			return metrics, nil
+		}
 		return nil, nil
 	} else if strings.Contains(line, "**** GPU usage ****") {
-		// This indicates we're starting the GPU usage section
+		if metrics := p.flushProcessSamples(); metrics != nil {
+			return metrics, nil
+		}
 		return nil, nil
 	} else if strings.Contains(line, "**** Battery and backlight usage ****") {
-		// This indicates we're starting the battery section
+		if metrics := p.flushProcessSamples(); metrics != nil {
+			return metrics, nil
+		}
+		return nil, nil
+	}
+
+	if p.parseProcessLine(line) {
 		return nil, nil
 	}
 
@@ -195,6 +221,65 @@ func (p *Parser) parseGPUProcessLine(line string) (*Metrics, error) {
 	return &Metrics{
 		GPUProcessSamples: []GPUProcessSample{sample},
 	}, nil
+}
+
+func (p *Parser) parseProcessLine(line string) bool {
+	if strings.HasPrefix(strings.ToLower(line), "name ") {
+		return false
+	}
+
+	fields := strings.Fields(line)
+	if len(fields) < 8 {
+		return false
+	}
+
+	const numericFields = 7
+	start := len(fields) - numericFields
+	nameParts := fields[:start]
+	if len(nameParts) == 0 {
+		return false
+	}
+
+	pid, err := strconv.Atoi(fields[start])
+	if err != nil {
+		return false
+	}
+
+	parseFloat := func(val string) float64 {
+		parsed, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return 0
+		}
+		return parsed
+	}
+
+	sample := ProcessSample{
+		PID:               pid,
+		Name:              strings.Join(nameParts, " "),
+		CPUMsPerSec:       parseFloat(fields[start+1]),
+		UserPercent:       parseFloat(fields[start+2]),
+		DeadlinesLT2Ms:    parseFloat(fields[start+3]),
+		Deadlines2To5Ms:   parseFloat(fields[start+4]),
+		WakeupsInterrupts: parseFloat(fields[start+5]),
+		WakeupsPkgIdle:    parseFloat(fields[start+6]),
+	}
+
+	p.processSamples = append(p.processSamples, sample)
+	return true
+}
+
+func (p *Parser) flushProcessSamples() *Metrics {
+	if len(p.processSamples) == 0 {
+		return nil
+	}
+
+	samples := make([]ProcessSample, len(p.processSamples))
+	copy(samples, p.processSamples)
+	p.processSamples = nil
+
+	return &Metrics{
+		ProcessSamples: samples,
+	}
 }
 
 func (p *Parser) parseSystemMetrics(line, lower string) *Metrics {

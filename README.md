@@ -99,6 +99,7 @@ sudo ./your_program
 
 - `Config`: Configuration for the powermetrics collector
 - `Metrics`: Represents a single powermetrics sample
+- `ProcessSample`: Represents a row from the powermetrics "Running tasks" table (CPU ms/s, user %, deadlines, wakeups)
 - `ClusterInfo`: CPU cluster information
 - `Stream`: Bundles a metrics channel with an errors channel
 - `Parser`: Handles invoking powermetrics and parsing output (now exposes methods for `RunWithErrors` and `RunWithReader`)
@@ -164,7 +165,7 @@ Available options:
 - `-interval`: Sampling interval (default 1s, e.g., 500ms, 1s, 2s)
 - `-json`: Output metrics in JSON format
 - `-system`: Only show system metrics
-- `-process`: Only show GPU process metrics
+- `-process`: Only show powermetrics process metrics (CPU running tasks plus GPU process usage when available)
 - `-cpu-residency`: Only show CPU residency metrics with detailed frequency breakdowns
 - `-gpu-residency`: Only show GPU residency metrics with software/hardware state distributions
 - `-network`: Only show network metrics (packets/bytes in/out per second)

@@ -13,6 +13,7 @@ type Parser struct {
 	config             Config
 	system             SystemSample
 	frequencyMHz       float64
+	processSamples     []ProcessSample
 	clusterInfo        map[string]*ClusterInfo
 	cpuResidencies     map[int]*CPUResidencyMetrics
 	clusterResidencies map[string]*ClusterResidencyMetrics
@@ -143,6 +144,10 @@ func (p *Parser) streamFromReader(ctx context.Context, reader io.Reader, wait fu
 			if metrics != nil {
 				metricsCh <- *metrics
 			}
+		}
+
+		if metrics := p.flushProcessSamples(); metrics != nil {
+			metricsCh <- *metrics
 		}
 
 		if err := scanner.Err(); err != nil {

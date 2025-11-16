@@ -54,7 +54,7 @@ func TestNormalizeConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			result := normalizeConfig(tt.input)
 			if result.PowermetricsPath != tt.expected.PowermetricsPath {
 				t.Errorf("PowermetricsPath: got %s, want %s", result.PowermetricsPath, tt.expected.PowermetricsPath)
@@ -88,7 +88,7 @@ func TestConvertToNanoseconds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			result := convertToNanoseconds(tt.value, tt.unit)
 			if result != tt.expected {
 				t.Errorf("convertToNanoseconds(%.1f, %q) = %d, want %d", tt.value, tt.unit, result, tt.expected)
@@ -115,7 +115,7 @@ func TestClampPercent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			result := clampPercent(tt.input)
 			if result != tt.expected {
 				t.Errorf("clampPercent(%.1f) = %.1f, want %.1f", tt.input, result, tt.expected)
@@ -142,7 +142,7 @@ func TestHasAll(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			result := hasAll(tt.str, tt.tokens...)
 			if result != tt.expected {
 				t.Errorf("hasAll(%q, %v) = %t, want %t", tt.str, tt.tokens, result, tt.expected)
@@ -169,7 +169,7 @@ func TestHasNone(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			result := hasNone(tt.str, tt.tokens...)
 			if result != tt.expected {
 				t.Errorf("hasNone(%q, %v) = %t, want %t", tt.str, tt.tokens, result, tt.expected)
@@ -199,7 +199,7 @@ func TestParseTrailingValue(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Don't use t.Parallel() to avoid race conditions
-			
+
 			result, found := parseTrailingValue(tt.line, tt.suffix)
 			if found != tt.found {
 				t.Errorf("parseTrailingValue(%q, %q): found = %t, want %t", tt.line, tt.suffix, found, tt.found)
@@ -231,7 +231,7 @@ func TestParseLeadingValueAfterColon(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Don't use t.Parallel() to avoid race conditions
-			
+
 			result, found := parseLeadingValueAfterColon(tt.line, tt.suffix)
 			if found != tt.found {
 				t.Errorf("parseLeadingValueAfterColon(%q, %q): found = %t, want %t", tt.line, tt.suffix, found, tt.found)
@@ -247,15 +247,15 @@ func TestDeriveBusyPercent(t *testing.T) {
 	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
-		name         string
-		activeNs     uint64
+		name            string
+		activeNs        uint64
 		explicitPercent string
-		window       time.Duration
-		expected     float64
+		window          time.Duration
+		expected        float64
 	}{
 		{"with explicit percent", 0, "85.5", time.Second, 85.5},
 		{"computed from nanoseconds", 500000000, "", time.Second, 50.0}, // 0.5s out of 1s = 50%
-		{"computed with clamping", 1500000000, "", time.Second, 100.0}, // 1.5s out of 1s = 150% -> 100%
+		{"computed with clamping", 1500000000, "", time.Second, 100.0},  // 1.5s out of 1s = 150% -> 100%
 		{"zero active", 0, "", time.Second, 0.0},
 		{"zero window", 500000000, "", 0, 0.0},
 	}
@@ -263,10 +263,10 @@ func TestDeriveBusyPercent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Don't use t.Parallel() to avoid race conditions
-			
+
 			result := deriveBusyPercent(tt.activeNs, tt.explicitPercent, tt.window)
 			if result != tt.expected {
-				t.Errorf("deriveBusyPercent(%d, %q, %v) = %f, want %f", 
+				t.Errorf("deriveBusyPercent(%d, %q, %v) = %f, want %f",
 					tt.activeNs, tt.explicitPercent, tt.window, result, tt.expected)
 			}
 		})
@@ -277,11 +277,11 @@ func TestParser_ParseLineSystemMetrics(t *testing.T) {
 	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
-		name     string
-		line     string
+		name      string
+		line      string
 		hasSystem bool
-		cpuPower float64
-		gpuPower float64
+		cpuPower  float64
+		gpuPower  float64
 	}{
 		{
 			"cpu power",
@@ -339,16 +339,16 @@ func TestParser_ParseLineSystemMetrics(t *testing.T) {
 			// Don't use t.Parallel() to avoid race conditions
 			// Create a new parser instance to avoid concurrent access
 			parser := NewParser(Config{})
-			
+
 			metrics, err := parser.ParseLine(tt.line)
 			if err != nil {
 				t.Fatalf("ParseLine(%q) returned error: %v", tt.line, err)
 			}
-			
+
 			if (metrics != nil) != tt.hasSystem {
 				t.Fatalf("ParseLine(%q) returned metrics=%t, want %t", tt.line, metrics != nil, tt.hasSystem)
 			}
-			
+
 			if metrics != nil && tt.hasSystem {
 				if metrics.SystemSample != nil {
 					if tt.cpuPower > 0 && metrics.SystemSample.CPUPowerWatts != tt.cpuPower {
@@ -367,8 +367,8 @@ func TestParser_ParseLineGPUProcess(t *testing.T) {
 	// Don't use t.Parallel() to avoid race conditions
 
 	tests := []struct {
-		name     string
-		line     string
+		name          string
+		line          string
 		hasGPUProcess bool
 	}{
 		{
@@ -408,22 +408,55 @@ func TestParser_ParseLineGPUProcess(t *testing.T) {
 			// Don't use t.Parallel() to avoid race conditions
 			// Create a new parser instance to avoid concurrent access
 			parser := NewParser(Config{SampleWindow: time.Second})
-			
+
 			metrics, err := parser.ParseLine(tt.line)
 			if err != nil {
 				t.Fatalf("ParseLine(%q) returned error: %v", tt.line, err)
 			}
-			
+
 			if (metrics != nil) != tt.hasGPUProcess {
 				t.Fatalf("ParseLine(%q) returned metrics=%t, want %t", tt.line, metrics != nil, tt.hasGPUProcess)
 			}
-			
+
 			if metrics != nil && tt.hasGPUProcess {
 				if len(metrics.GPUProcessSamples) == 0 {
 					t.Fatalf("Expected GPU process samples, got none")
 				}
 			}
 		})
+	}
+}
+
+func TestParser_ParseProcessMetrics(t *testing.T) {
+	// Don't use t.Parallel() to avoid race conditions
+	parser := NewParser(Config{})
+
+	line := "iTerm2                             24739  250.43    78.27  0.20    0.00               171.69  0.00"
+	metrics, err := parser.ParseLine(line)
+	if err != nil {
+		t.Fatalf("ParseLine(%q) returned error: %v", line, err)
+	}
+	if metrics != nil {
+		t.Fatalf("Expected no metrics until process section ends")
+	}
+
+	metrics, err = parser.ParseLine("")
+	if err != nil {
+		t.Fatalf("ParseLine(blank) returned error: %v", err)
+	}
+	if metrics == nil || len(metrics.ProcessSamples) != 1 {
+		t.Fatalf("Expected 1 process sample, got %#v", metrics)
+	}
+
+	sample := metrics.ProcessSamples[0]
+	if sample.Name != "iTerm2" || sample.PID != 24739 {
+		t.Fatalf("Unexpected process identity: %+v", sample)
+	}
+	if sample.CPUMsPerSec != 250.43 {
+		t.Fatalf("Expected CPU ms/s 250.43, got %.2f", sample.CPUMsPerSec)
+	}
+	if sample.WakeupsInterrupts != 171.69 {
+		t.Fatalf("Expected wakeups 171.69, got %.2f", sample.WakeupsInterrupts)
 	}
 }
 
@@ -437,45 +470,45 @@ func TestParser_updateClusterInfo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseLine(%q) returned error: %v", line1, err)
 	}
-	
+
 	if len(parser.clusterInfo) != 1 {
 		t.Fatalf("Expected 1 cluster after parsing %q, got %d", line1, len(parser.clusterInfo))
 	}
-	
+
 	cluster, exists := parser.clusterInfo["E-Cluster"]
 	if !exists {
 		t.Fatalf("Expected E-Cluster to exist after parsing %q", line1)
 	}
-	
+
 	if cluster.OnlinePercent != 75.5 {
 		t.Errorf("Expected OnlinePercent 75.5, got %f", cluster.OnlinePercent)
 	}
-	
+
 	// Test cluster frequency regex
 	line2 := "P1-Cluster HW active frequency: 2400.0 MHz"
 	_, err = parser.ParseLine(line2)
 	if err != nil {
 		t.Fatalf("ParseLine(%q) returned error: %v", line2, err)
 	}
-	
+
 	if len(parser.clusterInfo) != 2 {
 		t.Fatalf("Expected 2 clusters after parsing %q, got %d", line2, len(parser.clusterInfo))
 	}
-	
+
 	cluster2, exists := parser.clusterInfo["P1-Cluster"]
 	if !exists {
 		t.Fatalf("Expected P1-Cluster to exist after parsing %q", line2)
 	}
-	
+
 	if cluster2.HWActiveFreq != 2400.0 {
 		t.Errorf("Expected HWActiveFreq 2400.0, got %f", cluster2.HWActiveFreq)
 	}
-	
+
 	// Verify cluster types are assigned correctly
 	if cluster.Type != "Efficiency" {
 		t.Errorf("Expected cluster type 'Efficiency' for E-Cluster, got %s", cluster.Type)
 	}
-	
+
 	if cluster2.Type != "Performance" {
 		t.Errorf("Expected cluster type 'Performance' for P1-Cluster, got %s", cluster2.Type)
 	}
@@ -483,7 +516,7 @@ func TestParser_updateClusterInfo(t *testing.T) {
 
 func TestEnsureIntervalArgument(t *testing.T) {
 	// Don't use t.Parallel() to avoid race conditions
-	
+
 	tests := []struct {
 		name     string
 		args     []string
@@ -549,7 +582,7 @@ func TestRegexCompilation(t *testing.T) {
 		gpuIdleResidencyRegex,
 		gpuSWStateRegex,
 	}
-	
+
 	for i, re := range regexes {
 		if re == nil {
 			t.Errorf("Regex %d is nil, indicating compilation failure", i)
@@ -559,14 +592,14 @@ func TestRegexCompilation(t *testing.T) {
 
 func TestParser_ParseLineNewMetrics(t *testing.T) {
 	// Don't use t.Parallel() since we're testing with a single parser across subtests
-	
+
 	tests := []struct {
-		name     string
-		line     string
+		name            string
+		line            string
 		hasCPUResidency bool
-		hasNetwork bool
-		hasDisk bool
-		hasBattery bool
+		hasNetwork      bool
+		hasDisk         bool
+		hasBattery      bool
 		hasGPUResidency bool
 	}{
 		{
@@ -665,36 +698,36 @@ func TestParser_ParseLineNewMetrics(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a new parser for each subtest to avoid race conditions
 			parser := NewParser(Config{})
-			
+
 			metrics, err := parser.ParseLine(tt.line)
 			if err != nil {
 				t.Fatalf("ParseLine(%q) returned error: %v", tt.line, err)
 			}
-			
+
 			if tt.hasCPUResidency {
 				if metrics == nil || len(metrics.CPUResidencies) == 0 && len(metrics.ClusterResidencies) == 0 {
 					t.Fatalf("Expected CPU residency metrics from line %q, got none", tt.line)
 				}
 			}
-			
+
 			if tt.hasNetwork {
 				if metrics == nil || metrics.Network == nil {
 					t.Fatalf("Expected network metrics from line %q, got none", tt.line)
 				}
 			}
-			
+
 			if tt.hasDisk {
 				if metrics == nil || metrics.Disk == nil {
 					t.Fatalf("Expected disk metrics from line %q, got none", tt.line)
 				}
 			}
-			
+
 			if tt.hasBattery {
 				if metrics == nil || metrics.SystemSample == nil || metrics.SystemSample.BatteryPercent == 0 {
 					t.Fatalf("Expected battery metrics from line %q, got none", tt.line)
 				}
 			}
-			
+
 			if tt.hasGPUResidency {
 				if metrics == nil || metrics.GPUResidency == nil {
 					t.Fatalf("Expected GPU residency metrics from line %q, got none", tt.line)
@@ -713,11 +746,11 @@ func TestParser_ParseBatteryMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseLine(%q) returned error: %v", line, err)
 	}
-	
+
 	if metrics == nil || metrics.SystemSample == nil {
 		t.Fatalf("Expected metrics from battery line, got nil")
 	}
-	
+
 	if metrics.SystemSample.BatteryPercent != 75.5 {
 		t.Errorf("Expected battery percent 75.5, got %f", metrics.SystemSample.BatteryPercent)
 	}
@@ -731,27 +764,27 @@ func TestParser_ParseNetworkMetrics(t *testing.T) {
 		"out: 57.75 packets/s, 4586.65 bytes/s",
 		"in:  86.02 packets/s, 113827.21 bytes/s",
 	}
-	
+
 	for _, line := range lines {
 		metrics, err := parser.ParseLine(line)
 		if err != nil {
 			t.Fatalf("ParseLine(%q) returned error: %v", line, err)
 		}
-		
+
 		if metrics == nil || metrics.Network == nil {
 			t.Fatalf("Expected network metrics from line %q, got nil", line)
 		}
 	}
-	
+
 	// Check that both pieces of network info are collected
 	if parser.networkInfo == nil {
 		t.Fatal("Expected network info to be stored in parser")
 	}
-	
+
 	if parser.networkInfo.OutPacketsPerSec != 57.75 {
 		t.Errorf("Expected out packets 57.75, got %f", parser.networkInfo.OutPacketsPerSec)
 	}
-	
+
 	if parser.networkInfo.InBytesPerSec != 113827.21 {
 		t.Errorf("Expected in bytes 113827.21, got %f", parser.networkInfo.InBytesPerSec)
 	}
@@ -765,27 +798,27 @@ func TestParser_ParseDiskMetrics(t *testing.T) {
 		"read: 8.56 ops/s 45.67 KBytes/s",
 		"write: 73.88 ops/s 2070.85 KBytes/s",
 	}
-	
+
 	for _, line := range lines {
 		metrics, err := parser.ParseLine(line)
 		if err != nil {
 			t.Fatalf("ParseLine(%q) returned error: %v", line, err)
 		}
-		
+
 		if metrics == nil || metrics.Disk == nil {
 			t.Fatalf("Expected disk metrics from line %q, got nil", line)
 		}
 	}
-	
+
 	// Check that both pieces of disk info are collected
 	if parser.diskInfo == nil {
 		t.Fatal("Expected disk info to be stored in parser")
 	}
-	
+
 	if parser.diskInfo.ReadOpsPerSec != 8.56 {
 		t.Errorf("Expected read ops 8.56, got %f", parser.diskInfo.ReadOpsPerSec)
 	}
-	
+
 	if parser.diskInfo.WriteBytesPerSec != 2070.85*1024 { // converted from KBytes
 		t.Errorf("Expected write bytes %f, got %f", 2070.85*1024, parser.diskInfo.WriteBytesPerSec)
 	}
@@ -796,14 +829,14 @@ func TestParseFreqResidency(t *testing.T) {
 
 	testStr := "1020 MHz:  39% 1404 MHz: 2.2% 1788 MHz: 3.2% 2112 MHz: 3.2%"
 	result := parseFreqResidency(testStr)
-	
+
 	expectedFreqs := []float64{1020, 1404, 1788, 2112}
 	expectedPercents := []float64{39, 2.2, 3.2, 3.2}
-	
+
 	if len(result) != 4 {
 		t.Errorf("Expected 4 frequency entries, got %d", len(result))
 	}
-	
+
 	for i, freq := range expectedFreqs {
 		percent, exists := result[freq]
 		if !exists {
@@ -976,7 +1009,7 @@ func TestParseLineParsingFromSampleLog(t *testing.T) {
 		if actualValue != expectedValue {
 			// If the conversion doesn't work as expected, the value might be stored differently
 			// Let's accept either converted value or raw value depending on how parsing works
-			if actualValue != 954.0 {  // If it's stored as raw mW
+			if actualValue != 954.0 { // If it's stored as raw mW
 				t.Errorf("Expected CPU Power 0.954W (from 954mW) or 954.0, got %f", actualValue)
 			}
 		}
@@ -1048,7 +1081,7 @@ func TestCompleteSampleLogParsing(t *testing.T) {
 	}
 
 	parser := NewParser(Config{})
-	
+
 	metricsCount := 0
 	for _, line := range sampleLogLines {
 		metrics, err := parser.ParseLine(line)
@@ -1065,15 +1098,15 @@ func TestCompleteSampleLogParsing(t *testing.T) {
 	if parser.system.BatteryPercent != 36 {
 		t.Errorf("Expected battery percent to be 36, got %f", parser.system.BatteryPercent)
 	}
-	
+
 	if parser.networkInfo == nil || parser.networkInfo.OutPacketsPerSec != 57.75 {
 		t.Errorf("Expected network out packets to be 57.75, got %v", parser.networkInfo)
 	}
-	
+
 	if parser.diskInfo == nil || parser.diskInfo.ReadOpsPerSec != 8.56 {
 		t.Errorf("Expected disk read ops to be 8.56, got %v", parser.diskInfo)
 	}
-	
+
 	// Check that we collected CPU residency info for at least CPU 0
 	cpu0Found := false
 	for _, cpu := range parser.cpuResidencies {
@@ -1085,7 +1118,7 @@ func TestCompleteSampleLogParsing(t *testing.T) {
 	if !cpu0Found {
 		t.Errorf("Expected to find CPU 0 in residency info")
 	}
-	
+
 	// Check that we collected cluster info
 	clusterFound := false
 	for _, cluster := range parser.clusterResidencies {
@@ -1097,7 +1130,7 @@ func TestCompleteSampleLogParsing(t *testing.T) {
 	if !clusterFound {
 		t.Errorf("Expected to find E-Cluster in residency info")
 	}
-	
+
 	// Check that we collected interrupt info for CPU 0
 	interrupt0Found := false
 	for _, interrupt := range parser.interruptInfo {
@@ -1109,7 +1142,7 @@ func TestCompleteSampleLogParsing(t *testing.T) {
 	if !interrupt0Found {
 		t.Errorf("Expected to find interrupt info for CPU 0")
 	}
-	
+
 	if parser.gpuResidency == nil || parser.gpuResidency.HWActiveResidency != 1.63 {
 		t.Errorf("Expected GPU HW active residency to be 1.63, got %v", parser.gpuResidency)
 	}
