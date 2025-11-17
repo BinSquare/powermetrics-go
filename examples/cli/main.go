@@ -88,23 +88,24 @@ func main() {
 	}
 
 	// Process metrics - add rate limiting to respect the specified interval
-	lastOutputTime := time.Now()
+	var lastOutputTime time.Time
+	shouldThrottle := func() bool {
+		return !lastOutputTime.IsZero() && time.Since(lastOutputTime) < *interval
+	}
+	markOutput := func() {
+		lastOutputTime = time.Now()
+	}
 
 	for metrics := range metricsChan {
 		if *debug {
 			fmt.Println("Debug: Received metrics")
 		}
 
-		// Check if enough time has passed since the last output
-		if time.Since(lastOutputTime) < *interval {
-			continue // Skip this metric, wait for the interval to pass
-		}
-
-		// Update the last output time
-		lastOutputTime = time.Now()
-
 		if *onlyCPUResidency {
 			if len(metrics.CPUResidencies) > 0 {
+				if shouldThrottle() {
+					continue
+				}
 				if *jsonOutput {
 					data, _ := json.Marshal(metrics.CPUResidencies)
 					fmt.Println(string(data))
@@ -122,9 +123,13 @@ func main() {
 						}
 					}
 				}
+				markOutput()
 			}
 		} else if *onlyGPUResidency {
 			if metrics.GPUResidency != nil {
+				if shouldThrottle() {
+					continue
+				}
 				if *jsonOutput {
 					data, _ := json.Marshal(metrics.GPUResidency)
 					fmt.Println(string(data))
@@ -153,9 +158,13 @@ func main() {
 						fmt.Printf("\n")
 					}
 				}
+				markOutput()
 			}
 		} else if *onlyNetwork {
 			if metrics.Network != nil {
+				if shouldThrottle() {
+					continue
+				}
 				if *jsonOutput {
 					data, _ := json.Marshal(metrics.Network)
 					fmt.Println(string(data))
@@ -164,9 +173,13 @@ func main() {
 						int(metrics.Network.OutPacketsPerSec), int(metrics.Network.OutBytesPerSec),
 						int(metrics.Network.InPacketsPerSec), int(metrics.Network.InBytesPerSec))
 				}
+				markOutput()
 			}
 		} else if *onlyDisk {
 			if metrics.Disk != nil {
+				if shouldThrottle() {
+					continue
+				}
 				if *jsonOutput {
 					data, _ := json.Marshal(metrics.Disk)
 					fmt.Println(string(data))
@@ -175,18 +188,26 @@ func main() {
 						int(metrics.Disk.ReadOpsPerSec), int(metrics.Disk.ReadBytesPerSec),
 						int(metrics.Disk.WriteOpsPerSec), int(metrics.Disk.WriteBytesPerSec))
 				}
+				markOutput()
 			}
 		} else if *onlyBattery {
 			if metrics.SystemSample != nil && metrics.SystemSample.BatteryPercent > 0 {
+				if shouldThrottle() {
+					continue
+				}
 				if *jsonOutput {
 					data, _ := json.Marshal(map[string]float64{"battery_percent": metrics.SystemSample.BatteryPercent})
 					fmt.Println(string(data))
 				} else {
 					fmt.Printf("Battery: %.2f%%\n", metrics.SystemSample.BatteryPercent)
 				}
+				markOutput()
 			}
 		} else if *onlyInterrupts {
 			if len(metrics.Interrupts) > 0 {
+				if shouldThrottle() {
+					continue
+				}
 				if *jsonOutput {
 					data, _ := json.Marshal(metrics.Interrupts)
 					fmt.Println(string(data))
@@ -197,9 +218,20 @@ func main() {
 							intr.CPUID, intr.TotalIRQ, intr.IPI, intr.TIMER)
 					}
 				}
+				markOutput()
 			}
 		} else if *onlyProcess {
+			hasProcessData := len(metrics.ProcessSamples) > 0 || len(metrics.GPUProcessSamples) > 0
 			if *jsonOutput {
+				if !hasProcessData {
+					if *debug {
+						fmt.Println("Debug: No process samples available in this metrics update")
+					}
+					continue
+				}
+				if shouldThrottle() {
+					continue
+				}
 				payload := make(map[string]interface{})
 				if len(metrics.ProcessSamples) > 0 {
 					payload["processes"] = metrics.ProcessSamples
@@ -207,16 +239,20 @@ func main() {
 				if len(metrics.GPUProcessSamples) > 0 {
 					payload["gpu_processes"] = metrics.GPUProcessSamples
 				}
-				if len(payload) > 0 {
-					data, _ := json.Marshal(payload)
-					fmt.Println(string(data))
-				} else if *debug {
-					fmt.Println("Debug: No process samples available in this metrics update")
-				}
+				data, _ := json.Marshal(payload)
+				fmt.Println(string(data))
+				markOutput()
 			} else {
-				shown := false
+				if !hasProcessData {
+					if *debug {
+						fmt.Println("Debug: No process samples available in this metrics update")
+					}
+					continue
+				}
+				if shouldThrottle() {
+					continue
+				}
 				if len(metrics.ProcessSamples) > 0 {
-					shown = true
 					fmt.Printf("Processes: %d\n", len(metrics.ProcessSamples))
 					for _, proc := range metrics.ProcessSamples {
 						fmt.Printf("  PID: %d, Name: %s, CPU: %.2f ms/s, User: %.2f%%, Deadlines <2ms: %.2f, 2-5ms: %.2f, Wakeups Intr: %.2f, Pkg Idle: %.2f\n",
@@ -225,18 +261,21 @@ func main() {
 					}
 				}
 				if len(metrics.GPUProcessSamples) > 0 {
-					shown = true
 					fmt.Printf("GPU Processes: %d\n", len(metrics.GPUProcessSamples))
 					for _, proc := range metrics.GPUProcessSamples {
 						fmt.Printf("  PID: %d, Name: %s, Busy: %.2f%%, Active: %d ns\n",
 							proc.PID, proc.Name, proc.BusyPercent, proc.ActiveNanos)
 					}
 				}
-				if !shown && *debug {
-					fmt.Println("Debug: No process samples available in this metrics update")
-				}
+				markOutput()
 			}
-		} else if *onlySystem && metrics.SystemSample != nil {
+		} else if *onlySystem {
+			if metrics.SystemSample == nil {
+				continue
+			}
+			if shouldThrottle() {
+				continue
+			}
 			if *jsonOutput {
 				data, _ := json.Marshal(metrics.SystemSample)
 				fmt.Println(string(data))
@@ -247,111 +286,141 @@ func main() {
 					metrics.SystemSample.CPUTemperatureC, metrics.SystemSample.GPUTemperatureC,
 					metrics.SystemSample.ANEBusyPercent, metrics.SystemSample.BatteryPercent)
 			}
+			markOutput()
 		} else if !*onlyProcess && !*onlySystem && !*onlyCPUResidency && !*onlyGPUResidency &&
 			!*onlyNetwork && !*onlyDisk && !*onlyBattery && !*onlyInterrupts {
 			// Show all metrics
-			output := make(map[string]interface{})
+			if *jsonOutput {
+				output := make(map[string]interface{})
 
-			if metrics.SystemSample != nil {
-				if *jsonOutput {
+				if metrics.SystemSample != nil {
 					output["system"] = metrics.SystemSample
-				} else {
+				}
+
+				if len(metrics.ProcessSamples) > 0 {
+					output["processes"] = metrics.ProcessSamples
+				}
+
+				if len(metrics.GPUProcessSamples) > 0 {
+					output["gpu_processes"] = metrics.GPUProcessSamples
+				}
+
+				if len(metrics.Clusters) > 0 {
+					output["clusters"] = metrics.Clusters
+				}
+
+				if len(metrics.CPUResidencies) > 0 {
+					output["cpu_residencies"] = metrics.CPUResidencies
+				}
+
+				if metrics.GPUResidency != nil {
+					output["gpu_residency"] = metrics.GPUResidency
+				}
+
+				if metrics.Network != nil {
+					output["network"] = metrics.Network
+				}
+
+				if metrics.Disk != nil {
+					output["disk"] = metrics.Disk
+				}
+
+				if len(metrics.Interrupts) > 0 {
+					output["interrupts"] = metrics.Interrupts
+				}
+
+				if len(output) == 0 {
+					continue
+				}
+				if shouldThrottle() {
+					continue
+				}
+
+				data, _ := json.Marshal(output)
+				fmt.Println(string(data))
+				markOutput()
+			} else {
+				hasPrintable := metrics.SystemSample != nil ||
+					len(metrics.GPUProcessSamples) > 0 ||
+					len(metrics.Clusters) > 0 ||
+					len(metrics.CPUResidencies) > 0 ||
+					metrics.GPUResidency != nil ||
+					metrics.Network != nil ||
+					metrics.Disk != nil ||
+					len(metrics.Interrupts) > 0
+
+				if !hasPrintable {
+					if *debug && len(metrics.ProcessSamples) > 0 {
+						fmt.Printf("Processes available: %d (use -process to display details)\n", len(metrics.ProcessSamples))
+					}
+					continue
+				}
+				if shouldThrottle() {
+					continue
+				}
+
+				if metrics.SystemSample != nil {
 					fmt.Printf("CPU Power: %.2f W, GPU Power: %.2f W, CPU Freq: %.0f MHz, GPU Freq: %.0f MHz, CPU Temp: %.2f°C, GPU Temp: %.2f°C, ANE Busy: %.2f%%, Battery: %.2f%%\n",
 						metrics.SystemSample.CPUPowerWatts, metrics.SystemSample.GPUPowerWatts,
 						metrics.SystemSample.CPUFrequencyMHz, metrics.SystemSample.GPUFrequencyMHz,
 						metrics.SystemSample.CPUTemperatureC, metrics.SystemSample.GPUTemperatureC,
 						metrics.SystemSample.ANEBusyPercent, metrics.SystemSample.BatteryPercent)
 				}
-			}
 
-			if len(metrics.ProcessSamples) > 0 {
-				if *jsonOutput {
-					output["processes"] = metrics.ProcessSamples
-				} else if *debug {
+				if len(metrics.ProcessSamples) > 0 && *debug {
 					fmt.Printf("Processes available: %d (use -process to display details)\n", len(metrics.ProcessSamples))
 				}
-			}
 
-			if len(metrics.GPUProcessSamples) > 0 {
-				if *jsonOutput {
-					output["gpu_processes"] = metrics.GPUProcessSamples
-				} else {
+				if len(metrics.GPUProcessSamples) > 0 {
 					fmt.Printf("GPU Processes: %d\n", len(metrics.GPUProcessSamples))
 					for _, proc := range metrics.GPUProcessSamples {
 						fmt.Printf("  PID: %d, Name: %s, Busy: %.2f%%, Active: %d ns\n",
 							proc.PID, proc.Name, proc.BusyPercent, proc.ActiveNanos)
 					}
 				}
-			}
 
-			if len(metrics.Clusters) > 0 {
-				if *jsonOutput {
-					output["clusters"] = metrics.Clusters
-				} else {
+				if len(metrics.Clusters) > 0 {
 					fmt.Printf("CPU Clusters: %d\n", len(metrics.Clusters))
 					for _, cluster := range metrics.Clusters {
 						fmt.Printf("  Name: %s, Type: %s, Online: %.2f%%, Freq: %.0f MHz\n",
 							cluster.Name, cluster.Type, cluster.OnlinePercent, cluster.HWActiveFreq)
 					}
 				}
-			}
 
-			if len(metrics.CPUResidencies) > 0 {
-				if *jsonOutput {
-					output["cpu_residencies"] = metrics.CPUResidencies
-				} else {
+				if len(metrics.CPUResidencies) > 0 {
 					fmt.Printf("CPU Residencies: %d\n", len(metrics.CPUResidencies))
 					for _, cpu := range metrics.CPUResidencies {
 						fmt.Printf("  CPU %d: Freq %.0f MHz, Active: %.2f%%, Idle: %.2f%%, Down: %.2f%%\n",
 							cpu.CPUID, cpu.Frequency, calculateTotalActive(cpu.ActiveResidency), cpu.IdleResidency, cpu.DownResidency)
 					}
 				}
-			}
 
-			if metrics.GPUResidency != nil {
-				if *jsonOutput {
-					output["gpu_residency"] = metrics.GPUResidency
-				} else {
+				if metrics.GPUResidency != nil {
 					fmt.Printf("GPU Residency: HW Active: %.2f%%, Idle: %.2f%%, Power: %.2f mW\n",
 						metrics.GPUResidency.HWActiveResidency, metrics.GPUResidency.IdleResidency, metrics.GPUResidency.PowerMilliwatts)
 				}
-			}
 
-			if metrics.Network != nil {
-				if *jsonOutput {
-					output["network"] = metrics.Network
-				} else {
+				if metrics.Network != nil {
 					fmt.Printf("Network: Out %d packets/s, %d bytes/s | In %d packets/s, %d bytes/s\n",
 						int(metrics.Network.OutPacketsPerSec), int(metrics.Network.OutBytesPerSec),
 						int(metrics.Network.InPacketsPerSec), int(metrics.Network.InBytesPerSec))
 				}
-			}
 
-			if metrics.Disk != nil {
-				if *jsonOutput {
-					output["disk"] = metrics.Disk
-				} else {
+				if metrics.Disk != nil {
 					fmt.Printf("Disk: Read %d ops/s, %d bytes/s | Write %d ops/s, %d bytes/s\n",
 						int(metrics.Disk.ReadOpsPerSec), int(metrics.Disk.ReadBytesPerSec),
 						int(metrics.Disk.WriteOpsPerSec), int(metrics.Disk.WriteBytesPerSec))
 				}
-			}
 
-			if len(metrics.Interrupts) > 0 {
-				if *jsonOutput {
-					output["interrupts"] = metrics.Interrupts
-				} else {
+				if len(metrics.Interrupts) > 0 {
 					fmt.Printf("Interrupts: %d CPUs\n", len(metrics.Interrupts))
 					for _, intr := range metrics.Interrupts {
 						fmt.Printf("  CPU %d: Total IRQs %.2f/s, IPI %.2f/s, TIMER %.2f/s\n",
 							intr.CPUID, intr.TotalIRQ, intr.IPI, intr.TIMER)
 					}
 				}
-			}
 
-			if *jsonOutput {
-				data, _ := json.Marshal(output)
-				fmt.Println(string(data))
+				markOutput()
 			}
 		}
 
