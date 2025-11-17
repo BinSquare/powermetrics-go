@@ -790,6 +790,27 @@ func TestParser_ParseNetworkMetrics(t *testing.T) {
 	}
 }
 
+func TestParser_NetworkEmitsZeroTransition(t *testing.T) {
+	// Don't use t.Parallel() to avoid race conditions
+	parser := NewParser(Config{})
+
+	// Seed non-zero values
+	if _, err := parser.ParseLine("out: 12.00 packets/s, 480.00 bytes/s"); err != nil {
+		t.Fatalf("failed to parse non-zero network line: %v", err)
+	}
+
+	metrics, err := parser.ParseLine("out: 0 packets/s, 0 bytes/s")
+	if err != nil {
+		t.Fatalf("ParseLine returned error: %v", err)
+	}
+	if metrics == nil || metrics.Network == nil {
+		t.Fatalf("Expected metrics for zero network transition, got %#v", metrics)
+	}
+	if metrics.Network.OutPacketsPerSec != 0 || metrics.Network.OutBytesPerSec != 0 {
+		t.Fatalf("Expected zeroed network metrics, got %#v", metrics.Network)
+	}
+}
+
 func TestParser_ParseDiskMetrics(t *testing.T) {
 	// Don't use t.Parallel() to avoid race conditions
 	parser := NewParser(Config{})
@@ -821,6 +842,93 @@ func TestParser_ParseDiskMetrics(t *testing.T) {
 
 	if parser.diskInfo.WriteBytesPerSec != 2070.85*1024 { // converted from KBytes
 		t.Errorf("Expected write bytes %f, got %f", 2070.85*1024, parser.diskInfo.WriteBytesPerSec)
+	}
+}
+
+func TestParser_DiskEmitsZeroTransition(t *testing.T) {
+	// Don't use t.Parallel() to avoid race conditions
+	parser := NewParser(Config{})
+
+	// Seed non-zero values
+	if _, err := parser.ParseLine("read: 10.0 ops/s 20.0 KBytes/s"); err != nil {
+		t.Fatalf("failed to parse non-zero disk read: %v", err)
+	}
+
+	metrics, err := parser.ParseLine("read: 0 ops/s 0 KBytes/s")
+	if err != nil {
+		t.Fatalf("ParseLine returned error: %v", err)
+	}
+	if metrics == nil || metrics.Disk == nil {
+		t.Fatalf("Expected metrics for zero disk transition, got %#v", metrics)
+	}
+	if metrics.Disk.ReadOpsPerSec != 0 || metrics.Disk.ReadBytesPerSec != 0 {
+		t.Fatalf("Expected zeroed disk metrics, got %#v", metrics.Disk)
+	}
+}
+
+func TestParser_SystemSampleImmutable(t *testing.T) {
+	// Don't use t.Parallel() to avoid race conditions
+	parser := NewParser(Config{})
+
+	metrics, err := parser.ParseLine("CPU Power: 10 W")
+	if err != nil {
+		t.Fatalf("ParseLine returned error: %v", err)
+	}
+	if metrics == nil || metrics.SystemSample == nil {
+		t.Fatalf("expected system metrics, got %#v", metrics)
+	}
+	snapshot := metrics.SystemSample
+
+	if _, err := parser.ParseLine("CPU Power: 20 W"); err != nil {
+		t.Fatalf("ParseLine returned error: %v", err)
+	}
+
+	if snapshot.CPUPowerWatts != 10 {
+		t.Fatalf("expected snapshot to remain at 10W, got %.2f", snapshot.CPUPowerWatts)
+	}
+}
+
+func TestParser_NetworkMetricsImmutable(t *testing.T) {
+	// Don't use t.Parallel() to avoid race conditions
+	parser := NewParser(Config{})
+
+	metrics, err := parser.ParseLine("out: 5 packets/s, 500 bytes/s")
+	if err != nil {
+		t.Fatalf("ParseLine returned error: %v", err)
+	}
+	if metrics == nil || metrics.Network == nil {
+		t.Fatalf("expected network metrics, got %#v", metrics)
+	}
+	snapshot := metrics.Network
+
+	if _, err := parser.ParseLine("out: 15 packets/s, 1500 bytes/s"); err != nil {
+		t.Fatalf("ParseLine returned error: %v", err)
+	}
+
+	if snapshot.OutPacketsPerSec != 5 || snapshot.OutBytesPerSec != 500 {
+		t.Fatalf("expected snapshot to remain at original values, got %#v", snapshot)
+	}
+}
+
+func TestParser_DiskMetricsImmutable(t *testing.T) {
+	// Don't use t.Parallel() to avoid race conditions
+	parser := NewParser(Config{})
+
+	metrics, err := parser.ParseLine("read: 5 ops/s 10 KBytes/s")
+	if err != nil {
+		t.Fatalf("ParseLine returned error: %v", err)
+	}
+	if metrics == nil || metrics.Disk == nil {
+		t.Fatalf("expected disk metrics, got %#v", metrics)
+	}
+	snapshot := metrics.Disk
+
+	if _, err := parser.ParseLine("read: 15 ops/s 30 KBytes/s"); err != nil {
+		t.Fatalf("ParseLine returned error: %v", err)
+	}
+
+	if snapshot.ReadOpsPerSec != 5 || snapshot.ReadBytesPerSec != 10*1024 {
+		t.Fatalf("expected snapshot to remain at original values, got %#v", snapshot)
 	}
 }
 

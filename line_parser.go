@@ -90,9 +90,9 @@ func (p *Parser) ParseLine(line string) (*Metrics, error) {
 		return nil, nil
 	}
 
-	// Check if existing values were nil before update to detect new data
-	prevNetworkInfoWasNil := p.networkInfo == nil
-	prevDiskInfoWasNil := p.diskInfo == nil
+	// Snapshot existing values prior to update to detect true changes
+	prevNetworkInfo := cloneNetworkMetrics(p.networkInfo)
+	prevDiskInfo := cloneDiskMetrics(p.diskInfo)
 	prevSystem := p.system
 
 	p.updateClusterInfo(line)
@@ -105,8 +105,8 @@ func (p *Parser) ParseLine(line string) (*Metrics, error) {
 
 	// Check if any values changed or new values were added to decide whether to return metrics
 	systemChanged := p.system != prevSystem
-	networkChanged := (p.networkInfo != nil) && (prevNetworkInfoWasNil || p.networkInfo.InPacketsPerSec > 0 || p.networkInfo.OutPacketsPerSec > 0)
-	diskChanged := (p.diskInfo != nil) && (prevDiskInfoWasNil || p.diskInfo.ReadOpsPerSec > 0 || p.diskInfo.WriteOpsPerSec > 0)
+	networkChanged := !networkMetricsEqual(prevNetworkInfo, p.networkInfo)
+	diskChanged := !diskMetricsEqual(prevDiskInfo, p.diskInfo)
 	clusterChanged := len(p.clusterInfo) > 0                 // If cluster info is added, mark as changed
 	cpuResidencyChanged := len(p.cpuResidencies) > 0         // If CPU residency info is added, mark as changed
 	clusterResidencyChanged := len(p.clusterResidencies) > 0 // If cluster residency info is added, mark as changed
@@ -140,11 +140,11 @@ func (p *Parser) buildMetrics() *Metrics {
 	metrics := &Metrics{}
 
 	if p.networkInfo != nil {
-		metrics.Network = p.networkInfo
+		metrics.Network = cloneNetworkMetrics(p.networkInfo)
 	}
 
 	if p.diskInfo != nil {
-		metrics.Disk = p.diskInfo
+		metrics.Disk = cloneDiskMetrics(p.diskInfo)
 	}
 
 	if clusters := p.clusterSnapshot(); len(clusters) > 0 {
@@ -155,7 +155,7 @@ func (p *Parser) buildMetrics() *Metrics {
 	if len(p.cpuResidencies) > 0 {
 		cpuResidencies := make([]CPUResidencyMetrics, 0, len(p.cpuResidencies))
 		for _, cpu := range p.cpuResidencies {
-			cpuResidencies = append(cpuResidencies, *cpu)
+			cpuResidencies = append(cpuResidencies, cloneCPUResidencyMetrics(cpu))
 		}
 		metrics.CPUResidencies = cpuResidencies
 	}
@@ -163,13 +163,13 @@ func (p *Parser) buildMetrics() *Metrics {
 	if len(p.clusterResidencies) > 0 {
 		clusterResidencies := make([]ClusterResidencyMetrics, 0, len(p.clusterResidencies))
 		for _, cluster := range p.clusterResidencies {
-			clusterResidencies = append(clusterResidencies, *cluster)
+			clusterResidencies = append(clusterResidencies, cloneClusterResidencyMetrics(cluster))
 		}
 		metrics.ClusterResidencies = clusterResidencies
 	}
 
 	if p.gpuResidency != nil && (p.gpuResidency.HWActiveResidency > 0 || p.gpuResidency.IdleResidency > 0 || len(p.gpuResidency.HWActiveFreqResidency) > 0 || len(p.gpuResidency.SWStates) > 0) {
-		metrics.GPUResidency = p.gpuResidency
+		metrics.GPUResidency = cloneGPUResidencyMetrics(p.gpuResidency)
 	}
 
 	if len(p.interruptInfo) > 0 {
@@ -181,7 +181,7 @@ func (p *Parser) buildMetrics() *Metrics {
 	}
 
 	// Always include system metrics even if not updated from current line
-	metrics.SystemSample = &p.system
+	metrics.SystemSample = cloneSystemSample(&p.system)
 
 	return metrics
 }
@@ -462,7 +462,7 @@ func (p *Parser) parseSystemMetrics(line, lower string) *Metrics {
 	}
 
 	metrics := &Metrics{
-		SystemSample: &p.system,
+		SystemSample: cloneSystemSample(&p.system),
 	}
 
 	if clusters := p.clusterSnapshot(); len(clusters) > 0 {
@@ -473,7 +473,7 @@ func (p *Parser) parseSystemMetrics(line, lower string) *Metrics {
 	if len(p.cpuResidencies) > 0 {
 		cpuResidencies := make([]CPUResidencyMetrics, 0, len(p.cpuResidencies))
 		for _, cpu := range p.cpuResidencies {
-			cpuResidencies = append(cpuResidencies, *cpu)
+			cpuResidencies = append(cpuResidencies, cloneCPUResidencyMetrics(cpu))
 		}
 		metrics.CPUResidencies = cpuResidencies
 	}
@@ -481,21 +481,21 @@ func (p *Parser) parseSystemMetrics(line, lower string) *Metrics {
 	if len(p.clusterResidencies) > 0 {
 		clusterResidencies := make([]ClusterResidencyMetrics, 0, len(p.clusterResidencies))
 		for _, cluster := range p.clusterResidencies {
-			clusterResidencies = append(clusterResidencies, *cluster)
+			clusterResidencies = append(clusterResidencies, cloneClusterResidencyMetrics(cluster))
 		}
 		metrics.ClusterResidencies = clusterResidencies
 	}
 
 	if p.gpuResidency != nil && (p.gpuResidency.HWActiveResidency > 0 || p.gpuResidency.IdleResidency > 0 || len(p.gpuResidency.HWActiveFreqResidency) > 0) {
-		metrics.GPUResidency = p.gpuResidency
+		metrics.GPUResidency = cloneGPUResidencyMetrics(p.gpuResidency)
 	}
 
 	if p.networkInfo != nil {
-		metrics.Network = p.networkInfo
+		metrics.Network = cloneNetworkMetrics(p.networkInfo)
 	}
 
 	if p.diskInfo != nil {
-		metrics.Disk = p.diskInfo
+		metrics.Disk = cloneDiskMetrics(p.diskInfo)
 	}
 
 	if len(p.interruptInfo) > 0 {
@@ -698,6 +698,24 @@ func (p *Parser) updateNetworkInfo(line string) {
 	}
 }
 
+func cloneNetworkMetrics(m *NetworkMetrics) *NetworkMetrics {
+	if m == nil {
+		return nil
+	}
+	copy := *m
+	return &copy
+}
+
+func networkMetricsEqual(a, b *NetworkMetrics) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.InPacketsPerSec == b.InPacketsPerSec &&
+		a.InBytesPerSec == b.InBytesPerSec &&
+		a.OutPacketsPerSec == b.OutPacketsPerSec &&
+		a.OutBytesPerSec == b.OutBytesPerSec
+}
+
 func (p *Parser) updateDiskInfo(line string) {
 	// Parse read activity
 	readMatches := diskReadRegex.FindStringSubmatch(line)
@@ -726,6 +744,24 @@ func (p *Parser) updateDiskInfo(line string) {
 			}
 		}
 	}
+}
+
+func cloneDiskMetrics(m *DiskMetrics) *DiskMetrics {
+	if m == nil {
+		return nil
+	}
+	copy := *m
+	return &copy
+}
+
+func diskMetricsEqual(a, b *DiskMetrics) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.ReadOpsPerSec == b.ReadOpsPerSec &&
+		a.ReadBytesPerSec == b.ReadBytesPerSec &&
+		a.WriteOpsPerSec == b.WriteOpsPerSec &&
+		a.WriteBytesPerSec == b.WriteBytesPerSec
 }
 
 func (p *Parser) updateInterruptInfo(line string) {
@@ -880,6 +916,78 @@ func parseGPUStates(stateStr string) GPUSoftwareStateData {
 	}
 
 	return states
+}
+
+func cloneSystemSample(sample *SystemSample) *SystemSample {
+	if sample == nil {
+		return nil
+	}
+	copy := *sample
+	return &copy
+}
+
+func cloneCPUResidencyMetrics(src *CPUResidencyMetrics) CPUResidencyMetrics {
+	if src == nil {
+		return CPUResidencyMetrics{}
+	}
+	clone := CPUResidencyMetrics{
+		CPUID:           src.CPUID,
+		IdleResidency:   src.IdleResidency,
+		DownResidency:   src.DownResidency,
+		Frequency:       src.Frequency,
+		ActiveResidency: cloneFloatResidencyMap(src.ActiveResidency),
+	}
+	return clone
+}
+
+func cloneClusterResidencyMetrics(src *ClusterResidencyMetrics) ClusterResidencyMetrics {
+	if src == nil {
+		return ClusterResidencyMetrics{}
+	}
+	clone := ClusterResidencyMetrics{
+		Name:                  src.Name,
+		Type:                  src.Type,
+		OnlinePercent:         src.OnlinePercent,
+		HWActiveFreq:          src.HWActiveFreq,
+		HWActiveResidency:     src.HWActiveResidency,
+		IdleResidency:         src.IdleResidency,
+		DownResidency:         src.DownResidency,
+		HWActiveFreqResidency: cloneFloatResidencyMap(src.HWActiveFreqResidency),
+	}
+	return clone
+}
+
+func cloneFloatResidencyMap(src map[float64]float64) map[float64]float64 {
+	if src == nil {
+		return nil
+	}
+	clone := make(map[float64]float64, len(src))
+	for k, v := range src {
+		clone[k] = v
+	}
+	return clone
+}
+
+func cloneGPUResidencyMetrics(src *GPUResidencyMetrics) *GPUResidencyMetrics {
+	if src == nil {
+		return nil
+	}
+	clone := *src
+	clone.HWActiveFreqResidency = cloneFloatResidencyMap(src.HWActiveFreqResidency)
+	clone.SWRequestedStates = cloneGPUStateMap(src.SWRequestedStates)
+	clone.SWStates = cloneGPUStateMap(src.SWStates)
+	return &clone
+}
+
+func cloneGPUStateMap(src GPUSoftwareStateData) GPUSoftwareStateData {
+	if src == nil {
+		return nil
+	}
+	clone := make(GPUSoftwareStateData, len(src))
+	for k, v := range src {
+		clone[k] = v
+	}
+	return clone
 }
 
 // CalculateTotalActive calculates total active residency from the frequency map
